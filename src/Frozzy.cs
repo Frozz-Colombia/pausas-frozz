@@ -57,7 +57,8 @@ namespace PausasFrozz
         // ---- ventana (unidades lógicas, se escalan por DPI)
         public const float LW = 244, LH = 252;
         const float SW = 264, SH = 504;              // lienzo de las piezas (diseño original)
-        const float K = 118f / SH;                   // px lógicos por unidad del diseño
+        const float K = 128f / SH;                   // px lógicos por unidad del diseño
+        const int SS = 2;                            // supersampling del personaje
         const float Ground = LH - 4;
         const float DeskW = 98, DeskH = 46;
         const float DeskLeft = LW - 6 - DeskW;
@@ -82,7 +83,9 @@ namespace PausasFrozz
         readonly float sc;
         readonly int DW, DH;
         readonly Bitmap pzCabeza, pzTorso, pzManga, pzPata, pzPulgar, pzPiernaI, pzPiernaD, logo;
-        readonly Bitmap frame;
+        readonly Bitmap frame, pup;
+        readonly Graphics pg;
+        bool lowPower;
         readonly Graphics fg;
         readonly System.Windows.Forms.Timer anim;
         readonly DateTime t0 = DateTime.Now;
@@ -133,7 +136,7 @@ namespace PausasFrozz
             }
         }
 
-        Bitmap Pieza(string name, float w, float h, float q)
+        Bitmap Pieza(string name, float w, float h, float q, float sharpen)
         {
             using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
             using (Bitmap src = new Bitmap(s))
@@ -146,8 +149,41 @@ namespace PausasFrozz
                     g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                     g.DrawImage(src, 0, 0, bw, bh);
                 }
+                if (sharpen > 0) Sharpen(b, sharpen);
                 return b;
             }
+        }
+
+        // Realce de detalle (unsharp mask 3x3) sobre ARGB premultiplicado
+        static void Sharpen(Bitmap b, float amount)
+        {
+            int w = b.Width, h = b.Height, n = w * h;
+            BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadWrite, PixelFormat.Format32bppPArgb);
+            int[] src = new int[n], dst = new int[n];
+            Marshal.Copy(d.Scan0, src, 0, n);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int i = y * w + x, c = src[i], a = (c >> 24) & 255;
+                    if (a == 0) { dst[i] = c; continue; }
+                    int sr = 0, sg = 0, sb = 0, cnt = 0;
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        int yy = y + dy; if (yy < 0 || yy >= h) continue;
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            int xx = x + dx; if (xx < 0 || xx >= w) continue;
+                            int q = src[yy * w + xx];
+                            sr += (q >> 16) & 255; sg += (q >> 8) & 255; sb += q & 255; cnt++;
+                        }
+                    }
+                    int r0 = (c >> 16) & 255, g0 = (c >> 8) & 255, b0 = c & 255;
+                    int r1 = (int)(r0 + amount * (r0 - sr / (float)cnt)), g1 = (int)(g0 + amount * (g0 - sg / (float)cnt)), b1 = (int)(b0 + amount * (b0 - sb / (float)cnt));
+                    r1 = Math.Max(0, Math.Min(a, r1)); g1 = Math.Max(0, Math.Min(a, g1)); b1 = Math.Max(0, Math.Min(a, b1));
+                    dst[i] = (a << 24) | (r1 << 16) | (g1 << 8) | b1;
+                }
+            Marshal.Copy(dst, 0, d.Scan0, n);
+            b.UnlockBits(d);
         }
 
         public FrozzyWindow()
@@ -159,15 +195,19 @@ namespace PausasFrozz
             Size = new Size(DW, DH);
             Cursor = Cursors.Hand;
 
-            const float q = 1.6f; // un poco más de resolución para que las rotaciones se vean nítidas
-            pzCabeza = Pieza("fz_cabeza.png", SW * K, SH * K, q);
-            pzTorso = Pieza("fz_torso.png", SW * K, SH * K, q);
-            pzManga = Pieza("fz_manga.png", SW * K, SH * K, q);
-            pzPata = Pieza("fz_pata.png", SW * K, SH * K, q);
-            pzPulgar = Pieza("fz_pulgar.png", SW * K, SH * K, q);
-            pzPiernaI = Pieza("fz_pierna_izq.png", SW * K, SH * K, q);
-            pzPiernaD = Pieza("fz_pierna_der.png", SW * K, SH * K, q);
-            logo = Pieza("fz_logo.png", 66, 23, 2f);
+            // Las piezas se preparan exactamente al doble de la resolución de pantalla: el personaje
+            // completo se dibuja en un búfer 2x y se reduce con filtro bicúbico (todo igual de nítido).
+            const float sh = 0.45f;
+            pzCabeza = Pieza("fz_cabeza.png", SW * K, SH * K, SS, sh);
+            pzTorso = Pieza("fz_torso.png", SW * K, SH * K, SS, sh);
+            pzManga = Pieza("fz_manga.png", SW * K, SH * K, SS, sh);
+            pzPata = Pieza("fz_pata.png", SW * K, SH * K, SS, sh);
+            pzPulgar = Pieza("fz_pulgar.png", SW * K, SH * K, SS, sh);
+            pzPiernaI = Pieza("fz_pierna_izq.png", SW * K, SH * K, SS, sh);
+            pzPiernaD = Pieza("fz_pierna_der.png", SW * K, SH * K, SS, sh);
+            logo = Pieza("fz_logo.png", 66, 23, 2f, 0);
+            pup = new Bitmap(DW * SS, DH * SS, PixelFormat.Format32bppPArgb);
+            pg = Graphics.FromImage(pup);
 
             frame = new Bitmap(DW, DH, PixelFormat.Format32bppArgb);
             fg = Graphics.FromImage(frame);
@@ -193,7 +233,7 @@ namespace PausasFrozz
             get
             {
                 float l = XStand - 45;
-                return new Rectangle(Left + (int)(l * sc), Top + (int)((Ground - 130) * sc), (int)((LW - l) * sc), (int)(130 * sc));
+                return new Rectangle(Left + (int)(l * sc), Top + (int)((Ground - 140) * sc), (int)((LW - l) * sc), (int)(140 * sc));
             }
         }
 
@@ -235,6 +275,7 @@ namespace PausasFrozz
         }
 
         public void SetBusyHidden(bool v) { busyHidden = v; UpdateVisibility(); }
+        public void SetAway(bool v) { lowPower = v; }
         public void SetUserHidden(bool v) { userHidden = v; UpdateVisibility(); }
 
         void UpdateVisibility()
@@ -499,14 +540,30 @@ namespace PausasFrozz
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.TextRenderingHint = TextRenderingHint.AntiAlias;
 
+            // Frozzy al doble de resolución (solo la zona que ocupa) y luego reducido 2:1 con bicúbico
+            int x1 = Math.Max(0, (int)Math.Floor((rootX - 82) * sc)), x2 = Math.Min(DW, (int)Math.Ceiling((rootX + 82) * sc));
+            int y2 = Math.Min(DH, (int)Math.Ceiling((Ground + 1) * sc));
+            Rectangle dstR = new Rectangle(x1, 0, Math.Max(1, x2 - x1), y2);
+            Rectangle srcR = new Rectangle(dstR.X * SS, 0, dstR.Width * SS, dstR.Height * SS);
+            pg.ResetTransform(); pg.ResetClip();
+            pg.CompositingMode = CompositingMode.SourceCopy;
+            using (SolidBrush clr = new SolidBrush(Color.Transparent)) pg.FillRectangle(clr, srcR);
+            pg.CompositingMode = CompositingMode.SourceOver;
+            pg.SetClip(srcR);
+            pg.ScaleTransform(sc * SS, sc * SS);
+            pg.SetClip(new RectangleF(0, 0, LW, Ground + 0.5f), CombineMode.Intersect);
+            pg.SmoothingMode = SmoothingMode.AntiAlias;
+            pg.InterpolationMode = InterpolationMode.HighQualityBilinear;
+            pg.PixelOffsetMode = PixelOffsetMode.None;
+            pg.TranslateTransform(rootX, rootY - hop);
+            pg.ScaleTransform(K, K);
+            pg.TranslateTransform(-FeetX, -FeetY);
+            DrawPuppet(pg, cur, crouch);
             GraphicsState gs = g.Save();
-            g.SetClip(new RectangleF(0, 0, LW, Ground + 0.5f));
-            g.TranslateTransform(rootX, rootY - hop);
-            g.ScaleTransform(K, K);
-            g.TranslateTransform(-FeetX, -FeetY);
-            g.PixelOffsetMode = PixelOffsetMode.None;
-            DrawPuppet(g, cur, crouch);
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.ResetTransform();
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.PixelOffsetMode = PixelOffsetMode.Half;
+            g.DrawImage(pup, dstR, srcR, GraphicsUnit.Pixel);
             g.Restore(gs);
 
             DrawDesk(g, t, seated && rProp == "mug");
@@ -552,6 +609,8 @@ namespace PausasFrozz
                 }
             }
             hover = h;
+            int iv = lowPower ? 250 : (seated && st == St.Desk && !hover && l1 == null && idleAction == "teclear" ? 50 : 33);
+            if (anim.Interval != iv) anim.Interval = iv;
         }
 
         // ------------------------------------------------- marioneta
@@ -802,7 +861,7 @@ namespace PausasFrozz
         {
             if (disposing)
             {
-                anim.Stop(); anim.Dispose(); fg.Dispose(); frame.Dispose();
+                anim.Stop(); anim.Dispose(); fg.Dispose(); frame.Dispose(); pg.Dispose(); pup.Dispose();
                 foreach (Bitmap b in new Bitmap[] { pzCabeza, pzTorso, pzManga, pzPata, pzPulgar, pzPiernaI, pzPiernaD, logo }) b.Dispose();
             }
             base.Dispose(disposing);

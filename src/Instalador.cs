@@ -1,4 +1,4 @@
-// Instalador integrado: el mismo PausasFrozz.exe se instala solo cuando se ejecuta
+﻿// Instalador integrado: el mismo PausasFrozz.exe se instala solo cuando se ejecuta
 // desde cualquier carpeta distinta a %LOCALAPPDATA%\PausasFrozz (p. ej. Descargas).
 // Instala solo para el usuario actual (sin permisos de administrador): copia el .exe,
 // crea el acceso directo del menú Inicio y lo registra en "Aplicaciones instaladas".
@@ -104,15 +104,16 @@ namespace PausasFrozz
             Inicio.ApplyPath(false, Exe);
             try { if (File.Exists(Shortcut)) File.Delete(Shortcut); } catch { }
             try { Registry.CurrentUser.DeleteSubKeyTree(UninstKey, false); } catch { }
-            // el .exe en uso no se puede borrar a sí mismo: se borra la carpeta un instante después
+            MessageBox.Show("Pausas Frozz se desinstaló. ¡Gracias por cuidarte!", "Pausas Frozz", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // el .exe en uso no se puede borrar a sí mismo: se borra la carpeta al cerrar, con reintentos
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c ping 127.0.0.1 -n 3 > nul & rmdir /s /q \"" + Dir + "\"");
+                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe",
+                    "/c for /l %i in (1,1,15) do (ping 127.0.0.1 -n 2 >nul & rmdir /s /q \"" + Dir + "\" 2>nul & if not exist \"" + Dir + "\" exit)");
                 psi.CreateNoWindow = true; psi.UseShellExecute = false; psi.WindowStyle = ProcessWindowStyle.Hidden;
                 Process.Start(psi);
             }
             catch { }
-            MessageBox.Show("Pausas Frozz se desinstaló. ¡Gracias por cuidarte!", "Pausas Frozz", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 

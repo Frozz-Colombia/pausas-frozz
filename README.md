@@ -53,6 +53,7 @@ Si se hace push sin cambiar la versión, no se publica nada.
 ## Datos
 - Configuración: `%APPDATA%\PausasFrozz\config.txt`
 - Historial (para SST): `%APPDATA%\PausasFrozz\historial.csv` → `fecha,hora,recordatorio,accion` (hecho / omitido / pospuesto)
+- Registro de errores (si algo falla): `%APPDATA%\PausasFrozz\errores.log`
 
 ## Desinstalar
 *Configuración de Windows › Aplicaciones › Aplicaciones instaladas › Pausas Frozz › Desinstalar*. El historial se conserva en %APPDATA%\PausasFrozz.
