@@ -2,7 +2,7 @@
 rem Instala Pausas Frozz para el usuario actual (no requiere administrador).
 rem Si PausasFrozz.exe esta en la misma carpeta lo usa; si no, descarga la ultima version.
 set "D=%LOCALAPPDATA%\PausasFrozz"
-set "URL=https://github.com/smedina-cpu/pausas-frozz/releases/latest/download/PausasFrozz.exe"
+set "URL=https://github.com/Frozz-Colombia/pausas-frozz/releases/latest/download/PausasFrozz.exe"
 if not exist "%D%" mkdir "%D%"
 taskkill /im PausasFrozz.exe /f >nul 2>&1
 

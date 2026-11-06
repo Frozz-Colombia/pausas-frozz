@@ -11,12 +11,12 @@ Recordatorios en segundo plano basados en el instructivo SST **«Ergonomía en p
 | Revisión de postura | 120 min | Lista de verificación del instructivo |
 
 ## Instalar (cada usuario)
-Descargar **[PausasFrozz-Instalador.exe](https://github.com/smedina-cpu/pausas-frozz/releases/latest/download/PausasFrozz-Instalador.exe)**, abrirlo y dar clic en **Instalar**.
+Descargar **[PausasFrozz-Instalador.exe](https://github.com/Frozz-Colombia/pausas-frozz/releases/latest/download/PausasFrozz-Instalador.exe)**, abrirlo y dar clic en **Instalar**.
 
 - Se instala solo para el usuario, sin permisos de administrador, en `%LOCALAPPDATA%\PausasFrozz`.
 - Crea el acceso directo en el menú Inicio, arranca con Windows y aparece en *Configuración › Aplicaciones* (desde ahí se desinstala).
 - Después de instalar, el archivo descargado se puede borrar.
-- Alternativa: [Instalar.cmd](https://github.com/smedina-cpu/pausas-frozz/releases/latest/download/Instalar.cmd) descarga e instala la última versión.
+- Alternativa: [Instalar.cmd](https://github.com/Frozz-Colombia/pausas-frozz/releases/latest/download/Instalar.cmd) descarga e instala la última versión.
 
 > Como el .exe no tiene firma digital, Windows puede mostrar *«Windows protegió su PC»* la primera vez: clic en **Más información → Ejecutar de todas formas**.
 
