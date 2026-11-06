@@ -8,10 +8,10 @@ $ico = Join-Path $src 'app.ico'
 
 function Compile([string]$iconArg) {
     $a = @('/nologo', '/target:winexe', '/optimize+', "/out:$out",
-           "/resource:$src\instructivo.jpg,instructivo.jpg",
+           "/resource:$src\instructivo.jpg,instructivo.jpg", "/resource:$src\frozzy.png,frozzy.png",
            '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll')
     if ($iconArg) { $a += "/win32icon:$iconArg" }
-    $a += "$src\Program.cs"
+    $a += "$src\Program.cs"; $a += "$src\Frozzy.cs"
     & $csc @a
     if ($LASTEXITCODE -ne 0) { throw "Error de compilación" }
 }

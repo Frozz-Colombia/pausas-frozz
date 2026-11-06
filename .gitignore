@@ -4,3 +4,6 @@
 *.exe.old
 *.zip
 version.txt
+
+# worktrees locales
+.claude/
