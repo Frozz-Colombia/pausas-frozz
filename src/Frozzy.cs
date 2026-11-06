@@ -100,6 +100,15 @@ namespace PausasFrozz
         Point downPt, downLoc;
 
         Pose cur = new Pose();
+        readonly List<DateTime> hoverEnters = new List<DateTime>();
+        DateTime annoyedUntil = DateTime.MinValue;
+        string annoyedText;
+        static readonly string[] Molesto = {
+            "¡Ey! ¡Déjame trabajar!", "¡Ya, ya, ya! ¡Me haces cosquillas!", "¡Oye! ¡Estoy ocupado!",
+            "¡Quieto con ese mouse!", "¡Uy, qué intenso!", "¡Respeta mi espacio personal, parce!",
+            "¡Me vas a hacer regar el café!", "¡Aaay, ya pues!" };
+        static readonly string dumpDir = Environment.GetEnvironmentVariable("PAUSASFROZZ_DUMP");
+        static int dumpN;
         float rootX = XDesk, rootY = RootSitY;
         double lastT;
         string lProp, rProp;
@@ -211,6 +220,8 @@ namespace PausasFrozz
 
         public void ForceIdle(string a, double secs) { idleAction = a; idleUntil = DateTime.Now.AddSeconds(secs); nextIdle = idleUntil.AddSeconds(30); }
 
+        public void Annoy() { annoyedUntil = DateTime.Now.AddSeconds(30); annoyedText = Molesto[rnd.Next(Molesto.Length)]; }
+
         public void SitDown() { callText = null; if (st != St.Desk) Set(St.Desk); }
 
         public void Say(string l1, string l2, double seconds, bool big)
@@ -275,7 +286,8 @@ namespace PausasFrozz
         {
             Pose p = new Pose();
             string a;
-            if (seated) a = hover && st == St.Desk ? "saludar" : idleAction;
+            if (st == St.Desk && DateTime.Now < annoyedUntil) a = "molesto";
+            else if (seated) a = hover && st == St.Desk ? "saludar" : idleAction;
             else if (st == St.Alert) a = "alerta";
             else if (st == St.Cheer) a = el < 2.2 ? "celebrar" : "pulgar";
             else if (st == St.Active) a = action;
@@ -300,6 +312,11 @@ namespace PausasFrozz
                     break;
                 case "pulgar":
                     p.Thumb = 1; p.Head = 3 + S(t * 1.5) * 2;
+                    break;
+                case "molesto":
+                    p.RA = -125 + S(t * 23) * 38; p.RP = S(t * 27) * 45;
+                    p.LA = -125 + C(t * 21) * 38; p.LP = C(t * 25) * 45;
+                    p.Head = S(t * 17) * 9; p.BodyDY = -Math.Abs(S(t * 11)) * 3;
                     break;
                 case "saludar":
                     p.RA = -140; p.RP = S(t * 9) * 32; p.Head = 4;
@@ -487,14 +504,17 @@ namespace PausasFrozz
             g.TranslateTransform(rootX, rootY - hop);
             g.ScaleTransform(K, K);
             g.TranslateTransform(-FeetX, -FeetY);
+            g.PixelOffsetMode = PixelOffsetMode.None;
             DrawPuppet(g, cur, crouch);
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Restore(gs);
 
             DrawDesk(g, t, seated && rProp == "mug");
 
             // globo
             string l1 = null, l2 = null; bool big = false;
-            if (now < sayUntil) { l1 = sayL1; l2 = sayL2; big = sayBig; }
+            if (st == St.Desk && now < annoyedUntil) { l1 = annoyedText; }
+            else if (now < sayUntil) { l1 = sayL1; l2 = sayL2; big = sayBig; }
             else if (st == St.Cheer && phrase != null && now >= phraseFrom && now < phraseUntil) l1 = phrase;
             else if (st == St.Alert && callText != null) { l1 = callText; l2 = callSub ?? "Haz clic en mí"; }
             else if (st == St.Desk && hover && HoverText != null) { l1 = HoverText(); l2 = "Arrástrame para moverme"; }
@@ -511,6 +531,7 @@ namespace PausasFrozz
             else bubbleKey = null;
 
             Push();
+            if (dumpDir != null && dumpN < 320) { try { frame.Save(Path.Combine(dumpDir, "f" + (dumpN++).ToString("000") + ".png")); } catch { } }
 
             Point c = Cursor.Position;
             bool h = false;
@@ -518,6 +539,17 @@ namespace PausasFrozz
             {
                 int px = c.X - Left, py = c.Y - Top;
                 if (px >= 0 && py >= 0 && px < DW && py < DH) h = frame.GetPixel(px, py).A > 20;
+            }
+            if (h && !hover && st == St.Desk)
+            {
+                hoverEnters.Add(now);
+                hoverEnters.RemoveAll(x => (now - x).TotalSeconds > 6);
+                if (hoverEnters.Count >= 4 && now > annoyedUntil)
+                {
+                    annoyedUntil = now.AddSeconds(3.5);
+                    annoyedText = Molesto[rnd.Next(Molesto.Length)];
+                    hoverEnters.Clear();
+                }
             }
             hover = h;
         }
@@ -534,12 +566,8 @@ namespace PausasFrozz
         void DrawPuppet(Graphics g, Pose p, float crouch)
         {
             // piernas (quedan detrás del torso)
-            GraphicsState s = g.Save();
-            g.TranslateTransform(0, p.BodyDY + p.LegLDY); RotateAt(g, p.LegLA, LegLX, LegY); Piece(g, pzPiernaI);
-            g.Restore(s);
-            s = g.Save();
-            g.TranslateTransform(0, p.BodyDY + p.LegRDY); RotateAt(g, p.LegRA, LegRX, LegY); Piece(g, pzPiernaD);
-            g.Restore(s);
+            DrawLeg(g, pzPiernaI, LegLX, p.BodyDY, p.LegLDY, p.LegLA);
+            DrawLeg(g, pzPiernaD, LegRX, p.BodyDY, p.LegRDY, p.LegRA);
 
             // parte de arriba
             GraphicsState up = g.Save();
@@ -563,6 +591,18 @@ namespace PausasFrozz
             if (p.RFront >= 0.5f) DrawArm(g, false, p.RA, p.RP, p.ShDY, rProp);
             if (p.LFront >= 0.5f && !thumb) DrawArm(g, true, p.LA, p.LP, p.ShDY, lProp);
             g.Restore(up);
+        }
+
+        // Levantar la rodilla visto de frente = la pierna se ve más corta (anclada a la cadera)
+        void DrawLeg(Graphics g, Bitmap piece, float hipX, float bodyDY, float lift, float angle)
+        {
+            GraphicsState s = g.Save();
+            g.TranslateTransform(0, bodyDY);
+            RotateAt(g, angle, hipX, LegY);
+            float k = Math.Max(0.6f, 1 + lift / 110f);
+            if (k < 0.999f) { g.TranslateTransform(hipX, LegY); g.ScaleTransform(1 + (1 - k) * 0.15f, k); g.TranslateTransform(-hipX, -LegY); }
+            Piece(g, piece);
+            g.Restore(s);
         }
 
         void DrawArm(Graphics g, bool left, float a, float pa, float shDY, string prop)

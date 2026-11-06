@@ -72,7 +72,7 @@ static class Piezas
         Save(Cut(P(0, 0, 264, 0, 264, 188, 235, 195, 200, 215, 160, 225, 120, 221, 80, 211, 45, 198, 0, 196)), dir, "p_cabeza.png");
 
         // ---- torso + correa + parte alta del jean (sin brazos)
-        PointF[] torso = P(60, 203, 80, 211, 120, 221, 160, 225, 200, 215, 192, 232, 200, 260, 207, 290, 213, 320, 217, 347,
+        PointF[] torso = P(78, 212, 80, 211, 120, 221, 160, 225, 200, 215, 192, 232, 200, 260, 207, 290, 213, 320, 217, 347,
                            221, 374, 224, 412, 36, 412, 40, 374, 44, 347, 47, 320, 53, 290, 60, 260, 68, 232);
         Bitmap t = Cut(torso);
         using (Graphics g = Graphics.FromImage(t))
@@ -95,7 +95,7 @@ static class Piezas
                 g.DrawLines(ink, P(207, 290, 213, 320, 218, 347, 220, 366, 223, 412));
                 // lado izquierdo: quitar el brazo del pulgar, reconstruir camisa
                 g.FillPolygon(white, P(70, 226, 76, 244, 106, 244, 106, 347, 42, 347, 45, 320, 51, 290, 58, 260, 66, 236));
-                g.DrawLines(ink, P(62, 210, 69, 232, 60, 260, 53, 290, 47, 320, 43, 347));
+                g.DrawLines(ink, P(69, 232, 60, 260, 53, 290, 47, 320, 43, 347));
             }
         }
         Save(t, dir, "p_torso.png");
@@ -109,7 +109,18 @@ static class Piezas
 
         // ---- piernas (desde la entrepierna hacia abajo, con zapato)
         Save(Cut(P(30, 400, 129, 400, 129, 504, 30, 504)), dir, "p_pierna_izq.png");
-        Save(Cut(P(129, 400, 240, 400, 240, 504, 129, 504)), dir, "p_pierna_der.png");
+        Bitmap pd = Cut(P(129, 400, 240, 400, 240, 504, 129, 504));
+        using (Graphics g = Graphics.FromImage(pd))
+        {
+            // quitar los restos de la pata original y rehacer el borde del jean
+            g.CompositingMode = CompositingMode.SourceCopy;
+            using (SolidBrush clear = new SolidBrush(Color.Transparent)) g.FillPolygon(clear, P(221, 398, 264, 398, 264, 419, 224, 419));
+            g.CompositingMode = CompositingMode.SourceOver;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (SolidBrush jean = new SolidBrush(Color.FromArgb(23, 97, 173))) g.FillPolygon(jean, P(204, 398, 222, 398, 225, 419, 204, 419));
+            using (Pen ink = new Pen(Ink, 5f)) g.DrawLine(ink, 222, 398, 225.5f, 420);
+        }
+        Save(pd, dir, "p_pierna_der.png");
 
         // ---- vista previa del ensamblado en reposo
         Bitmap prev = new Bitmap(src.Width * 2 + 20, src.Height, PixelFormat.Format32bppArgb);
