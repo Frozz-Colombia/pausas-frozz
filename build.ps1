@@ -1,4 +1,4 @@
-# Compila PausasFrozz.exe con el compilador C# incluido en Windows (.NET Framework 4).
+﻿# Compila PausasFrozz.exe con el compilador C# incluido en Windows (.NET Framework 4).
 # Uso:  powershell -ExecutionPolicy Bypass -File build.ps1
 $ErrorActionPreference = 'Stop'
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
@@ -8,10 +8,10 @@ $ico = Join-Path $src 'app.ico'
 
 function Compile([string]$iconArg) {
     $a = @('/nologo', '/target:winexe', '/optimize+', "/out:$out",
-           "/resource:$src\instructivo.jpg,instructivo.jpg", "/resource:$src\frozzy.png,frozzy.png",
+           "/resource:$src\instructivo.jpg,instructivo.jpg", "/resource:$src\frozzy.png,frozzy.png", "/resource:$src\frozzy_head.png,frozzy_head.png", "/lib:$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\WPF", "/r:System.Speech.dll",
            '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll')
     if ($iconArg) { $a += "/win32icon:$iconArg" }
-    $a += "$src\Program.cs"; $a += "$src\Frozzy.cs"; $a += "$src\Instalador.cs"
+    $a += "$src\Program.cs"; $a += "$src\Frozzy.cs"; $a += "$src\Instalador.cs"; $a += "$src\Frases.cs"; $a += "$src\Bienvenida.cs"
     & $csc @a
     if ($LASTEXITCODE -ne 0) { throw "Error de compilación" }
 }

@@ -32,7 +32,7 @@ namespace PausasFrozz
     static class AppInfo
     {
         // Para publicar una actualización: subir este número y hacer push a main.
-        public const string Version = "1.2.1";
+        public const string Version = "1.3.0";
         public const string Repo = "Frozz-Colombia/pausas-frozz";
     }
 
@@ -184,30 +184,109 @@ namespace PausasFrozz
 
     static class Sonido
     {
-        public static void Chime()
+        static byte[] wChime, wStep, wTick, wDone;
+        static System.Speech.Synthesis.SpeechSynthesizer tts;
+        static CultureInfo ttsCulture;
+        static bool ttsTried;
+
+        static double[] N(double f, double s, double d, double v) { return new double[] { f, s, d, v }; }
+
+        // Genera un WAV en memoria con notas tipo campana: {frecuencia, inicio, duración, volumen}
+        static byte[] Wav(double[][] notes)
         {
-            ThreadPool.QueueUserWorkItem(delegate { try { Console.Beep(880, 110); Console.Beep(1175, 170); } catch { } });
+            const int sr = 22050;
+            double end = 0;
+            foreach (double[] n in notes) end = Math.Max(end, n[1] + n[2]);
+            int len = (int)((end + 0.05) * sr);
+            double[] buf = new double[len];
+            foreach (double[] n in notes)
+            {
+                int s0 = (int)(n[1] * sr), cnt = (int)(n[2] * sr);
+                for (int i = 0; i < cnt && s0 + i < len; i++)
+                {
+                    double t = (double)i / sr;
+                    double env = Math.Min(1, t / 0.006) * Math.Exp(-t * 5.0 / n[2]);
+                    double w = 2 * Math.PI * n[0] * t;
+                    buf[s0 + i] += n[3] * env * (Math.Sin(w) + 0.35 * Math.Sin(2 * w) + 0.12 * Math.Sin(3 * w));
+                }
+            }
+            using (MemoryStream ms = new MemoryStream())
+            using (BinaryWriter bw = new BinaryWriter(ms))
+            {
+                bw.Write(Encoding.ASCII.GetBytes("RIFF")); bw.Write(36 + len * 2); bw.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+                bw.Write(16); bw.Write((short)1); bw.Write((short)1); bw.Write(sr); bw.Write(sr * 2); bw.Write((short)2); bw.Write((short)16);
+                bw.Write(Encoding.ASCII.GetBytes("data")); bw.Write(len * 2);
+                for (int i = 0; i < len; i++) bw.Write((short)(Math.Max(-1, Math.Min(1, buf[i] * 0.5)) * 32000));
+                bw.Flush();
+                return ms.ToArray();
+            }
         }
-        public static void Tick()
+
+        static void Play(byte[] w)
         {
-            ThreadPool.QueueUserWorkItem(delegate { try { Console.Beep(988, 90); } catch { } });
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try { using (MemoryStream ms = new MemoryStream(w)) using (System.Media.SoundPlayer sp = new System.Media.SoundPlayer(ms)) sp.PlaySync(); }
+                catch { }
+            });
         }
-        public static void Done()
+
+        // aviso de pausa
+        public static void Chime() { if (wChime == null) wChime = Wav(new[] { N(880, 0, 0.5, 0.8), N(1318.5, 0.14, 0.7, 0.8) }); Play(wChime); }
+        // cambio de paso: tres notas subiendo, bien distinguible aunque no mires la pantalla
+        public static void Step() { if (wStep == null) wStep = Wav(new[] { N(784, 0, 0.2, 0.9), N(987.8, 0.1, 0.2, 0.9), N(1318.5, 0.2, 0.45, 1) }); Play(wStep); }
+        // últimos segundos de cada paso
+        public static void Tick() { if (wTick == null) wTick = Wav(new[] { N(1568, 0, 0.08, 0.45) }); Play(wTick); }
+        // pausa completada: fanfarria corta
+        public static void Done() { if (wDone == null) wDone = Wav(new[] { N(523.3, 0, 0.25, 0.8), N(659.3, 0.12, 0.25, 0.8), N(784, 0.24, 0.25, 0.8), N(1046.5, 0.36, 0.9, 1) }); Play(wDone); }
+
+        static void InitVoz()
         {
-            ThreadPool.QueueUserWorkItem(delegate { try { Console.Beep(784, 120); Console.Beep(988, 120); Console.Beep(1319, 220); } catch { } });
+            if (ttsTried) return;
+            ttsTried = true;
+            try
+            {
+                System.Speech.Synthesis.SpeechSynthesizer s = new System.Speech.Synthesis.SpeechSynthesizer();
+                foreach (System.Speech.Synthesis.InstalledVoice v in s.GetInstalledVoices())
+                    if (v.Enabled && v.VoiceInfo.Culture.TwoLetterISOLanguageName == "es")
+                    {
+                        s.SelectVoice(v.VoiceInfo.Name); s.SetOutputToDefaultAudioDevice();
+                        tts = s; ttsCulture = v.VoiceInfo.Culture; return;
+                    }
+                s.Dispose();
+            }
+            catch { tts = null; }
+        }
+
+        public static bool VozDisponible { get { InitVoz(); return tts != null; } }
+
+        public static void Say(string text)
+        {
+            InitVoz();
+            if (tts == null || string.IsNullOrEmpty(text)) return;
+            try
+            {
+                tts.SpeakAsyncCancelAll();
+                System.Speech.Synthesis.PromptBuilder pb = new System.Speech.Synthesis.PromptBuilder(ttsCulture);
+                pb.AppendBreak(TimeSpan.FromMilliseconds(600));
+                pb.AppendText(text);
+                tts.SpeakAsync(pb);
+            }
+            catch { }
         }
     }
 
     // ------------------------------------------------------- recordatorios
     class Step
     {
-        public string Text; public int Seconds;
+        public string Text, Anim; public int Seconds;
         public Step(string t, int s) { Text = t; Seconds = s; }
+        public Step(string t, int s, string anim) { Text = t; Seconds = s; Anim = anim; }
     }
 
     class ReminderDef
     {
-        public string Key, Name, Short, Plural, Glyph, Title, Intro, Tip, DoneText, Call;
+        public string Key, Name, Short, Plural, Glyph, Title, Intro, Tip, DoneText, Call, Anim;
         public int DefaultMinutes;
         public bool ResetOnAway, Checklist, ResetsVista;
         public List<Step> Steps = new List<Step>();
@@ -223,59 +302,59 @@ namespace PausasFrozz
             ReminderDef d;
 
             d = new ReminderDef();
-            d.Key = "vista"; d.Call = "¡Hora de descansar la vista!"; d.Name = "Descanso visual (regla 20-20-20)"; d.Short = "Vista"; d.Plural = "Descansos visuales";
+            d.Key = "vista"; d.Call = "¡Hora de descansar la vista{n}!"; d.Name = "Descanso visual (regla 20-20-20)"; d.Short = "Vista"; d.Plural = "Descansos visuales";
             d.Glyph = "eye"; d.DefaultMinutes = 20; d.ResetOnAway = true;
             d.Title = "Descansa la vista";
             d.Intro = "Regla 20-20-20: cada 20 minutos mira algo a 20 pies (6 m) de distancia durante 20 segundos.";
-            d.Steps.Add(new Step("Aparta la mirada de la pantalla y enfoca un objeto lejano, a unos 6 metros: una ventana, el fondo de la oficina.", 20));
+            d.Steps.Add(new Step("Aparta la mirada de la pantalla y enfoca un objeto lejano, a unos 6 metros: una ventana, el fondo de la oficina.", 20, "mirar_lejos"));
             d.Tip = "Parpadea varias veces: frente a la pantalla parpadeamos menos y los ojos se resecan.";
             d.DoneText = "Listo";
             l.Add(d);
 
             d = new ReminderDef();
-            d.Key = "agua"; d.Call = "¡Hora de tomar agua!"; d.Name = "Hidratación"; d.Short = "Agua"; d.Plural = "Vasos de agua";
+            d.Key = "agua"; d.Call = "¡Hora de tomar agua{n}!"; d.Name = "Hidratación"; d.Short = "Agua"; d.Plural = "Vasos de agua";
             d.Glyph = "drop"; d.DefaultMinutes = 60; d.ResetOnAway = false;
             d.Title = "Hora de hidratarte";
             d.Intro = "Toma un vaso de agua. Mantenerte hidratado ayuda a la concentración y reduce la fatiga.";
             d.Tip = "Ten tu termo o botella a la mano en el puesto de trabajo.";
-            d.DoneText = "Ya tomé agua";
+            d.DoneText = "Ya tomé agua"; d.Anim = "tomar_agua";
             l.Add(d);
 
             d = new ReminderDef();
-            d.Key = "estiramiento"; d.Call = "¡A estirarnos un poco!"; d.Name = "Estiramientos de cuello, hombros y espalda"; d.Short = "Estiramientos"; d.Plural = "Rutinas de estiramiento";
+            d.Key = "estiramiento"; d.Call = "¡A estirarnos un poco{n}!"; d.Name = "Estiramientos de cuello, hombros y espalda"; d.Short = "Estiramientos"; d.Plural = "Rutinas de estiramiento";
             d.Glyph = "stretch"; d.DefaultMinutes = 60; d.ResetOnAway = true; d.ResetsVista = true;
             d.Title = "Estira cuello, hombros y espalda";
             d.Intro = "Unos 2 minutos de estiramientos suaves. Muévete despacio, sin rebotes y sin llegar al dolor.";
-            d.Steps.Add(new Step("Cuello: inclina la cabeza llevando la oreja hacia el hombro derecho. Sostén.", 15));
-            d.Steps.Add(new Step("Cuello: ahora hacia el hombro izquierdo. Sostén.", 15));
-            d.Steps.Add(new Step("Cuello: baja el mentón hacia el pecho y siente el estiramiento en la nuca.", 15));
-            d.Steps.Add(new Step("Hombros: haz círculos lentos con los hombros hacia atrás.", 15));
-            d.Steps.Add(new Step("Hombros: entrelaza los dedos y estira los brazos al frente, redondeando la espalda alta.", 15));
-            d.Steps.Add(new Step("Espalda: brazos arriba, dedos entrelazados, estírate hacia el techo.", 15));
-            d.Steps.Add(new Step("Espalda: sentado, gira el tronco hacia la derecha apoyándote en el espaldar. Sostén.", 15));
-            d.Steps.Add(new Step("Espalda: ahora gira el tronco hacia la izquierda. Sostén.", 15));
-            d.Steps.Add(new Step("Muñecas: brazo al frente, palma hacia afuera; con la otra mano lleva los dedos hacia ti. Cambia de mano a la mitad.", 20));
+            d.Steps.Add(new Step("Cuello: inclina la cabeza llevando la oreja hacia el hombro derecho. Sostén.", 15, "cuello_der"));
+            d.Steps.Add(new Step("Cuello: ahora hacia el hombro izquierdo. Sostén.", 15, "cuello_izq"));
+            d.Steps.Add(new Step("Cuello: baja el mentón hacia el pecho y siente el estiramiento en la nuca.", 15, "menton"));
+            d.Steps.Add(new Step("Hombros: haz círculos lentos con los hombros hacia atrás.", 15, "hombros_circ"));
+            d.Steps.Add(new Step("Hombros: entrelaza los dedos y estira los brazos al frente, redondeando la espalda alta.", 15, "brazos_frente"));
+            d.Steps.Add(new Step("Espalda: brazos arriba, dedos entrelazados, estírate hacia el techo.", 15, "brazos_arriba"));
+            d.Steps.Add(new Step("Espalda: sentado, gira el tronco hacia la derecha apoyándote en el espaldar. Sostén.", 15, "giro_der"));
+            d.Steps.Add(new Step("Espalda: ahora gira el tronco hacia la izquierda. Sostén.", 15, "giro_izq"));
+            d.Steps.Add(new Step("Muñecas: brazo al frente, palma hacia afuera; con la otra mano lleva los dedos hacia ti. Cambia de mano a la mitad.", 20, "munecas"));
             d.Tip = "Si una molestia persiste, repórtala a SST.";
             d.DoneText = "Terminé";
             l.Add(d);
 
             d = new ReminderDef();
-            d.Key = "pausa"; d.Call = "¡Pausa activa! ¡Arriba!"; d.Name = "Pausa activa"; d.Short = "Pausa activa"; d.Plural = "Pausas activas";
+            d.Key = "pausa"; d.Call = "¡Pausa activa{n}! ¡Arriba!"; d.Name = "Pausa activa"; d.Short = "Pausa activa"; d.Plural = "Pausas activas";
             d.Glyph = "walk"; d.DefaultMinutes = 90; d.ResetOnAway = true; d.ResetsVista = true;
             d.Title = "Pausa activa: levántate";
             d.Intro = "Llevas un buen rato en la silla. Ponte de pie y activa la circulación durante unos 3 minutos.";
-            d.Steps.Add(new Step("Ponte de pie y camina: ve por agua, sube y baja escaleras o da una vuelta por la oficina.", 60));
-            d.Steps.Add(new Step("Marcha en tu sitio levantando las rodillas.", 30));
-            d.Steps.Add(new Step("Ponte en puntas de pie y baja despacio. Repite unas 10 veces.", 30));
-            d.Steps.Add(new Step("Haz círculos con los tobillos y sacude suavemente manos y brazos.", 20));
-            d.Steps.Add(new Step("Manos en la cintura: abre el pecho y lleva los hombros hacia atrás.", 20));
-            d.Steps.Add(new Step("Respira profundo 3 veces: inhala por la nariz y exhala lento por la boca.", 20));
+            d.Steps.Add(new Step("Ponte de pie y camina: ve por agua, sube y baja escaleras o da una vuelta por la oficina.", 60, "caminar"));
+            d.Steps.Add(new Step("Marcha en tu sitio levantando las rodillas.", 30, "marchar"));
+            d.Steps.Add(new Step("Ponte en puntas de pie y baja despacio. Repite unas 10 veces.", 30, "puntas"));
+            d.Steps.Add(new Step("Haz círculos con los tobillos y sacude suavemente manos y brazos.", 20, "tobillos"));
+            d.Steps.Add(new Step("Manos en la cintura: abre el pecho y lleva los hombros hacia atrás.", 20, "cintura"));
+            d.Steps.Add(new Step("Respira profundo 3 veces: inhala por la nariz y exhala lento por la boca.", 20, "respirar"));
             d.Tip = "Al volver, alterna tareas y evita giros repetidos del cuello.";
             d.DoneText = "Terminé";
             l.Add(d);
 
             d = new ReminderDef();
-            d.Key = "postura"; d.Call = "¡Revisemos tu postura!"; d.Name = "Revisión de postura"; d.Short = "Postura"; d.Plural = "Revisiones de postura";
+            d.Key = "postura"; d.Call = "¡Revisemos tu postura{n}!"; d.Name = "Revisión de postura"; d.Short = "Postura"; d.Plural = "Revisiones de postura";
             d.Glyph = "posture"; d.DefaultMinutes = 120; d.ResetOnAway = false; d.Checklist = true;
             d.Title = "Revisa tu postura";
             d.Intro = "Un puesto bien ajustado también es una medida de prevención. Verifica:";
@@ -285,7 +364,7 @@ namespace PausasFrozz
             d.Steps.Add(new Step("Pies apoyados en el suelo.", 0));
             d.Steps.Add(new Step("Elementos de uso frecuente al alcance, sin giros repetidos del cuello.", 0));
             d.Tip = "Reporta a SST las molestias persistentes.";
-            d.DoneText = "Mi postura está bien";
+            d.DoneText = "Mi postura está bien"; d.Anim = "postura";
             l.Add(d);
 
             return l;
@@ -308,6 +387,9 @@ namespace PausasFrozz
         public bool FirstRun = true;
         public bool Mascot = true;
         public int MascotX = int.MinValue, MascotY = int.MinValue;
+        public string UserName = "";
+        public bool UseName, Voice, WelcomeDone;
+        public int CooldownMinutes = 10;
 
         public static string Dir
         {
@@ -349,6 +431,11 @@ namespace PausasFrozz
                     else if (k == "inicio_windows") c.Startup = v == "1";
                     else if (k == "primera_vez") c.FirstRun = v == "1";
                     else if (k == "frozzy") c.Mascot = v == "1";
+                    else if (k == "nombre") c.UserName = v;
+                    else if (k == "usar_nombre") c.UseName = v == "1";
+                    else if (k == "voz") c.Voice = v == "1";
+                    else if (k == "bienvenida") c.WelcomeDone = v == "1";
+                    else if (k == "separacion" && int.TryParse(v, out n)) c.CooldownMinutes = Math.Max(0, Math.Min(60, n));
                     else if (k == "frozzy.x" && int.TryParse(v, out n)) c.MascotX = n;
                     else if (k == "frozzy.y" && int.TryParse(v, out n)) c.MascotY = n;
                 }
@@ -384,6 +471,11 @@ namespace PausasFrozz
                 sb.AppendLine("inicio_windows=" + (Startup ? "1" : "0"));
                 sb.AppendLine("primera_vez=" + (FirstRun ? "1" : "0"));
                 sb.AppendLine("frozzy=" + (Mascot ? "1" : "0"));
+                sb.AppendLine("nombre=" + (UserName ?? "").Replace("\r", " ").Replace("\n", " ").Trim());
+                sb.AppendLine("usar_nombre=" + (UseName ? "1" : "0"));
+                sb.AppendLine("voz=" + (Voice ? "1" : "0"));
+                sb.AppendLine("bienvenida=" + (WelcomeDone ? "1" : "0"));
+                sb.AppendLine("separacion=" + CooldownMinutes);
                 if (MascotX != int.MinValue) { sb.AppendLine("frozzy.x=" + MascotX); sb.AppendLine("frozzy.y=" + MascotY); }
                 File.WriteAllText(FilePath, sb.ToString(), Encoding.UTF8);
             }
@@ -637,7 +729,9 @@ namespace PausasFrozz
         public event Action<ReminderPopup, string> Result;
         public bool Running { get { return running; } }
 
-        readonly bool sound;
+        readonly bool sound, chimeOnShow, voice;
+        public string FinishPhrase;
+        public event Action<ReminderPopup, int> StepChanged;
         readonly int hh;
         Label lblStepNum, lblCount, lblStep;
         Bar bar;
@@ -659,9 +753,9 @@ namespace PausasFrozz
             }
         }
 
-        public ReminderPopup(ReminderDef def, bool sound, int snoozeMin)
+        public ReminderPopup(ReminderDef def, bool sound, bool chimeOnShow, bool voice, int snoozeMin)
         {
-            Def = def; this.sound = sound;
+            Def = def; this.sound = sound; this.chimeOnShow = chimeOnShow; this.voice = voice;
             FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual; BackColor = Color.White;
             AutoScaleMode = AutoScaleMode.None;
@@ -818,7 +912,7 @@ namespace PausasFrozz
             base.OnShown(e);
             Native.RoundCorners(Handle);
             fade.Start();
-            if (sound) Sonido.Chime();
+            if (chimeOnShow) Sonido.Chime();
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -862,9 +956,18 @@ namespace PausasFrozz
                 btnLater.Visible = false;
                 ShowStep(false);
                 tick.Start();
+                if (sound) Sonido.Step();
+                AnnounceStep();
                 return;
             }
+            if (sound && !done) Sonido.Done();
             CloseWith("hecho");
+        }
+
+        void AnnounceStep()
+        {
+            if (StepChanged != null) StepChanged(this, stepIdx);
+            if (voice) Sonido.Say(Def.Steps[stepIdx].Text);
         }
 
         void OnTick()
@@ -875,8 +978,10 @@ namespace PausasFrozz
                 stepIdx++;
                 if (stepIdx >= Def.Steps.Count) { Finish(); return; }
                 remaining = Def.Steps[stepIdx].Seconds;
-                if (sound) Sonido.Tick();
+                if (sound) Sonido.Step();
+                AnnounceStep();
             }
+            else if (remaining <= 3 && sound) Sonido.Tick();
             ShowStep(false);
         }
 
@@ -885,11 +990,12 @@ namespace PausasFrozz
             tick.Stop(); running = false; done = true;
             lblStepNum.Text = "COMPLETADO";
             lblCount.Text = "✓"; lblCount.ForeColor = Brand.GreenDark;
-            lblStep.Text = "¡Bien hecho! Cuidarte también es parte del trabajo.";
+            lblStep.Text = string.IsNullOrEmpty(FinishPhrase) ? "¡Bien hecho! Cuidarte también es parte del trabajo." : FinishPhrase;
             bar.Value = 1;
             btnSkip.Visible = false;
             btnMain.Text = "Cerrar";
             if (sound) Sonido.Done();
+            if (voice) Sonido.Say("¡Firme! " + (FinishPhrase ?? "Bien hecho."));
             autoClose = new System.Windows.Forms.Timer(); autoClose.Interval = 5000;
             autoClose.Tick += delegate { CloseWith("hecho"); };
             autoClose.Start();
@@ -918,7 +1024,7 @@ namespace PausasFrozz
         readonly List<ReminderDef> defs;
         Dictionary<string, CheckBox> chk = new Dictionary<string, CheckBox>();
         Dictionary<string, NumericUpDown> num = new Dictionary<string, NumericUpDown>();
-        CheckBox chkSched, chkSound, chkStartup, chkFrozzy;
+        CheckBox chkSched, chkSound, chkStartup, chkFrozzy, chkName, chkVoice; TextBox txtName; NumericUpDown numCooldown;
         DateTimePicker dtStart, dtEnd;
         CheckBox[] days = new CheckBox[7];
         NumericUpDown numIdle, numSnooze;
@@ -980,8 +1086,12 @@ namespace PausasFrozz
             numSnooze = Num(1, 60, cfg.SnoozeMinutes, x + Brand.S(250), y);
             Lbl("min", x + Brand.S(322), y + Brand.S(3));
             y += Brand.S(34);
+            Lbl("Tiempo mínimo entre una pausa y otra", x, y + Brand.S(3));
+            numCooldown = Num(0, 60, cfg.CooldownMinutes, x + Brand.S(250), y);
+            Lbl("min", x + Brand.S(322), y + Brand.S(3));
+            y += Brand.S(34);
             chkSound = new CheckBox();
-            chkSound.Text = "Sonido al mostrar los avisos"; chkSound.Checked = cfg.Sound;
+            chkSound.Text = "Sonidos: aviso, cambio de paso y pausa completada"; chkSound.Checked = cfg.Sound;
             chkSound.Location = new Point(x, y); chkSound.Size = new Size(Brand.S(400), Brand.S(26));
             Controls.Add(chkSound);
             y += Brand.S(30);
@@ -994,6 +1104,26 @@ namespace PausasFrozz
             chkFrozzy.Text = "Mostrar a Frozzy (mascota animada que avisa las pausas)"; chkFrozzy.Checked = cfg.Mascot;
             chkFrozzy.Location = new Point(x, y); chkFrozzy.Size = new Size(Brand.S(460), Brand.S(26));
             Controls.Add(chkFrozzy);
+            y += Brand.S(30);
+            chkVoice = new CheckBox();
+            bool voz = Sonido.VozDisponible;
+            chkVoice.Text = voz ? "Leer en voz alta los pasos de cada pausa" : "Leer los pasos en voz alta (no hay voz en español instalada)";
+            chkVoice.Enabled = voz; chkVoice.Checked = voz && cfg.Voice;
+            chkVoice.Location = new Point(x, y); chkVoice.Size = new Size(Brand.S(460), Brand.S(26));
+            Controls.Add(chkVoice);
+            y += Brand.S(40);
+
+            Section("Personalización", fH, x, ref y);
+            Lbl("Tu nombre", x, y + Brand.S(3));
+            txtName = new TextBox();
+            txtName.Location = new Point(x + Brand.S(90), y); txtName.Width = Brand.S(220); txtName.MaxLength = 30;
+            txtName.Text = cfg.UserName ?? "";
+            Controls.Add(txtName);
+            y += Brand.S(34);
+            chkName = new CheckBox();
+            chkName.Text = "Quiero que Frozzy me llame por mi nombre"; chkName.Checked = cfg.UseName;
+            chkName.Location = new Point(x, y); chkName.Size = new Size(Brand.S(460), Brand.S(26));
+            Controls.Add(chkName);
             y += Brand.S(44);
 
             Button ok = new Button();
@@ -1069,6 +1199,10 @@ namespace PausasFrozz
             cfg.Sound = chkSound.Checked;
             cfg.Startup = chkStartup.Checked;
             cfg.Mascot = chkFrozzy.Checked;
+            cfg.Voice = chkVoice.Checked;
+            cfg.UserName = txtName.Text.Trim();
+            cfg.UseName = chkName.Checked && cfg.UserName.Length > 0;
+            cfg.CooldownMinutes = (int)numCooldown.Value;
             cfg.Save();
         }
     }
@@ -1147,7 +1281,7 @@ namespace PausasFrozz
             timer.Interval = 1000; timer.Tick += delegate { Tick(); };
             timer.Start();
 
-            if (cfg.Mascot && (!demo || demoKey.StartsWith("frozzy"))) CreateFrozzy();
+            if (cfg.Mascot && (!demo || demoKey.StartsWith("frozzy") || demoKey.StartsWith("anim:") || demoKey.StartsWith("idle:"))) CreateFrozzy();
             invoker = new Control();
             invoker.CreateControl();
             if (!demo)
@@ -1162,6 +1296,12 @@ namespace PausasFrozz
             if (updated)
                 tray.ShowBalloonTip(6000, "Pausas Frozz actualizado", "Ya tienes la versión " + AppInfo.Version + ".", ToolTipIcon.Info);
 
+            if (!cfg.WelcomeDone && !demo)
+            {
+                System.Windows.Forms.Timer wt = new System.Windows.Forms.Timer(); wt.Interval = 1500;
+                wt.Tick += delegate { wt.Stop(); ShowWelcome(); };
+                wt.Start();
+            }
             if (cfg.FirstRun && !demo)
             {
                 tray.ShowBalloonTip(10000, "Pausas Frozz está activo",
@@ -1175,10 +1315,13 @@ namespace PausasFrozz
                 ReminderDef d = defs.FirstOrDefault(r => r.Key == demoKey);
                 if (d != null) ShowReminder(d);
                 else if (demoKey == "config") OpenSettings();
+                else if (demoKey == "bienvenida") ShowWelcome();
+                else if (demoKey.StartsWith("anim:") && frozzy != null) { string an = demoKey.Substring(5); frozzy.SetAction(an); }
+                else if (demoKey.StartsWith("idle:") && frozzy != null) { string an = demoKey.Substring(5); frozzy.ForceIdle(an, 60); }
                 else if (demoKey == "frozzy" && frozzy != null)
                 {
                     System.Windows.Forms.Timer dt = new System.Windows.Forms.Timer(); dt.Interval = 2500;
-                    dt.Tick += delegate { dt.Stop(); pending = defs[0]; frozzy.Alert(defs[0].Call); };
+                    dt.Tick += delegate { dt.Stop(); pending = defs[0]; frozzy.Alert(Frases.Personalizar(defs[0].Call, Nombre), null); };
                     dt.Start();
                 }
             }
@@ -1283,6 +1426,7 @@ namespace PausasFrozz
 
             if (++ticks % 5 == 1) UpdateTooltip(now);
             if (frozzy != null && ticks % 2 == 0) frozzy.SetBusyHidden(Native.UserBusy());
+            if (frozzy != null) UpdateFrozzyNext(now, sched, paused);
             if (pending != null && (!sched || paused)) CancelPending();
 
             if (demo) return;
@@ -1296,8 +1440,9 @@ namespace PausasFrozz
             if (frozzy != null && frozzy.Visible)
             {
                 pending = next;
-                frozzy.Alert(next.Call);
+                frozzy.Alert(Frases.Personalizar(next.Call, Nombre), null);
                 if (cfg.Sound) Sonido.Chime();
+                if (cfg.Voice) Sonido.Say(Frases.Personalizar(next.Call, Nombre));
             }
             else ShowReminder(next);
         }
@@ -1335,9 +1480,19 @@ namespace PausasFrozz
         {
             if (popup != null) popup.CloseWith("reemplazado");
             pending = null;
-            popup = new ReminderPopup(d, cfg.Sound && (frozzy == null || !frozzy.Visible), cfg.SnoozeMinutes);
+            bool withFrozzy = frozzy != null && frozzy.Visible;
+            popup = new ReminderPopup(d, cfg.Sound, cfg.Sound && !withFrozzy, cfg.Voice, cfg.SnoozeMinutes);
+            popup.FinishPhrase = Frases.Siguiente(Nombre);
+            popup.StepChanged += delegate(ReminderPopup pp, int i) { if (frozzy != null && pp == popup) frozzy.SetAction(pp.Def.Steps[i].Anim); };
             popup.Result += OnPopupResult;
-            if (frozzy != null && frozzy.Visible) { PlaceNearFrozzy(popup); frozzy.Accompany(); }
+            if (withFrozzy)
+            {
+                PlaceNearFrozzy(popup);
+                frozzy.Accompany();
+                frozzy.Say(Frases.Personalizar("¡Vamos{n}, yo te acompaño!", Nombre), null, 3, false);
+                if (!d.Timed && d.Anim != null) frozzy.SetAction(d.Anim);
+            }
+            if (cfg.Voice) Sonido.Say(d.Title + ". " + d.Intro);
             popup.Show();
         }
 
@@ -1350,11 +1505,15 @@ namespace PausasFrozz
             if (action == "hecho" || action == "omitido") due[k] = now.AddMinutes(cfg.Min[k]);
             else if (action == "pospuesto") due[k] = now.AddMinutes(cfg.SnoozeMinutes);
             if (action == "hecho" && p.Def.ResetsVista) due["vista"] = now.AddMinutes(cfg.Min["vista"]);
-            noPopupBefore = now.AddSeconds(90);
+            // separación mínima entre pausas para que no se junten
+            int gap = Math.Max(1, cfg.CooldownMinutes);
+            if (action == "hecho" || action == "omitido") noPopupBefore = now.AddMinutes(gap);
+            else if (action == "pospuesto") noPopupBefore = now.AddMinutes(Math.Min(cfg.SnoozeMinutes, gap));
+            else noPopupBefore = now.AddSeconds(90);
             UpdateTooltip(now);
             if (frozzy != null && popup == null && action != "reemplazado")
             {
-                if (action == "hecho") frozzy.Cheer(); else frozzy.SitDown();
+                if (action == "hecho") frozzy.Cheer(p.FinishPhrase); else frozzy.SitDown();
             }
             if (demo && popup == null && action != "reemplazado" && demoKey != "frozzy") ExitApp();
         }
@@ -1454,6 +1613,37 @@ namespace PausasFrozz
             if (frozzy != null) frozzy.SitDown();
         }
 
+        string Nombre { get { return cfg.UseName && !string.IsNullOrWhiteSpace(cfg.UserName) ? cfg.UserName.Trim() : null; } }
+
+        void ShowWelcome()
+        {
+            WelcomeForm w = new WelcomeForm(cfg, formIcon);
+            w.FormClosed += delegate
+            {
+                if (!cfg.WelcomeDone) { cfg.WelcomeDone = true; cfg.Save(); }
+                if (frozzy != null) frozzy.Say(Frases.Personalizar("¡Mucho gusto{n}!", Nombre), "Aquí estaré trabajando contigo", 5, false);
+            };
+            w.Show(); w.Activate();
+        }
+
+        // Reloj del escritorio de Frozzy: cuánto falta para la próxima pausa
+        void UpdateFrozzyNext(DateTime now, bool sched, bool paused)
+        {
+            if (paused) { frozzy.SetNext("", 0, 0, 2); return; }
+            if (!sched) { frozzy.SetNext("", 0, 0, 3); return; }
+            if (pending != null || popup != null) { frozzy.SetNext("", 0, 1, 1); return; }
+            ReminderDef next = null; DateTime best = DateTime.MaxValue;
+            foreach (ReminderDef d in defs)
+            {
+                if (!cfg.On[d.Key]) continue;
+                DateTime e = due[d.Key] > noPopupBefore ? due[d.Key] : noPopupBefore;
+                if (e < best) { best = e; next = d; }
+            }
+            if (next == null) { frozzy.SetNext("", 0, 0, 3); return; }
+            double rem = Math.Max(0, (best - now).TotalSeconds);
+            frozzy.SetNext(next.Short, rem, 1 - Math.Min(1, rem / (cfg.Min[next.Key] * 60.0)), 0);
+        }
+
         string FrozzyText()
         {
             DateTime now = DateTime.Now;
@@ -1476,7 +1666,7 @@ namespace PausasFrozz
         {
             Rectangle fr = frozzy.StandingScreenRect;
             Rectangle wa = Screen.FromRectangle(frozzy.Bounds).WorkingArea;
-            int x = fr.Left - p.Width - Brand.S(6);
+            int x = fr.Left - p.Width - Brand.S(40);
             if (x < wa.Left + 4) x = fr.Right + Brand.S(6);
             if (x + p.Width > wa.Right - 4) x = wa.Right - p.Width - 4;
             int y = Math.Min(wa.Bottom - p.Height - Brand.S(16), fr.Bottom - p.Height);

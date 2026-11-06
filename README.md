@@ -21,7 +21,15 @@ Descargar **[PausasFrozz-Instalador.exe](https://github.com/Frozz-Colombia/pausa
 > Como el .exe no tiene firma digital, Windows puede mostrar *«Windows protegió su PC»* la primera vez: clic en **Más información → Ejecutar de todas formas**.
 
 ## Frozzy
-La mascota de Frozz vive en la esquina inferior derecha trabajando en su escritorio. Cuando toca una pausa se pone de pie, salta y avisa hasta que le das clic; abre el aviso a su lado, te acompaña y al terminar celebra con «¡Firme!». Se puede arrastrar a otra parte; clic derecho = menú. Se oculta en presentaciones y pantalla completa.
+La mascota de Frozz vive en la esquina inferior derecha trabajando en su escritorio (con el logo de Frozz y un reloj que muestra cuánto falta para la próxima pausa). De vez en cuando toma café, mira el celular, bosteza o mira alrededor.
+
+- Cuando toca una pausa se pone de pie, camina al lado del escritorio, salta y te llama (por tu nombre si lo autorizaste) hasta que le das clic.
+- Durante la pausa **hace cada ejercicio contigo**: mira a lo lejos, toma agua, inclina el cuello, estira los brazos, marcha, se pone en puntas, respira…
+- Al terminar suena una fanfarria, celebra con «¡Firme!» y te dice una **frase motivacional** (más de 60, sin repetir hasta usarlas todas).
+- Cada cambio de paso suena (y los últimos 3 segundos hacen tic), así sabes cuándo pasar al siguiente sin mirar la pantalla. Opcional: leer los pasos en voz alta.
+- Se puede arrastrar; clic derecho = menú. Se oculta en presentaciones y pantalla completa.
+
+Las pausas no se amontonan: entre una y otra hay un **tiempo mínimo** (10 min por defecto, configurable).
 ## Actualizaciones automáticas
 La app revisa el último Release de este repositorio al arrancar (a los 45 s) y cada 6 horas.
 Si hay una versión nueva pregunta *«¿Actualizar ahora?»*; al aceptar la descarga, verifica su huella SHA-256,
