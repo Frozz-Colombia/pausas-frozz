@@ -8,8 +8,9 @@ $ico = Join-Path $src 'app.ico'
 
 function Compile([string]$iconArg) {
     $a = @('/nologo', '/target:winexe', '/optimize+', "/out:$out",
-           "/resource:$src\instructivo.jpg,instructivo.jpg", "/resource:$src\frozzy.png,frozzy.png", "/resource:$src\frozzy_head.png,frozzy_head.png", "/lib:$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\WPF", "/r:System.Speech.dll",
+           "/resource:$src\instructivo.jpg,instructivo.jpg", "/resource:$src\frozzy.png,frozzy.png", "/lib:$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\WPF", "/r:System.Speech.dll",
            '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll')
+    Get-ChildItem "$src\fz_*.png" | ForEach-Object { $a += "/resource:$($_.FullName),$($_.Name)" }
     if ($iconArg) { $a += "/win32icon:$iconArg" }
     $a += "$src\Program.cs"; $a += "$src\Frozzy.cs"; $a += "$src\Instalador.cs"; $a += "$src\Frases.cs"; $a += "$src\Bienvenida.cs"
     & $csc @a

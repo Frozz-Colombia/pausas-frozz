@@ -21,7 +21,7 @@ Descargar **[PausasFrozz-Instalador.exe](https://github.com/Frozz-Colombia/pausa
 > Como el .exe no tiene firma digital, Windows puede mostrar *«Windows protegió su PC»* la primera vez: clic en **Más información → Ejecutar de todas formas**.
 
 ## Frozzy
-La mascota de Frozz vive en la esquina inferior derecha trabajando en su escritorio (con el logo de Frozz y un reloj que muestra cuánto falta para la próxima pausa). De vez en cuando toma café, mira el celular, bosteza o mira alrededor.
+La mascota de Frozz vive en la esquina inferior derecha trabajando en su escritorio (con el logo oficial de Frozz y un reloj que muestra cuánto falta para la próxima pausa). De vez en cuando toma café, mira el celular, bosteza o mira alrededor.
 
 - Cuando toca una pausa se pone de pie, camina al lado del escritorio, salta y te llama (por tu nombre si lo autorizaste) hasta que le das clic.
 - Durante la pausa **hace cada ejercicio contigo**: mira a lo lejos, toma agua, inclina el cuello, estira los brazos, marcha, se pone en puntas, respira…
@@ -59,3 +59,6 @@ Si se hace push sin cambiar la versión, no se publica nada.
 
 ## Compilar localmente
 `powershell -ExecutionPolicy Bypass -File build.ps1` (usa el compilador C# incluido en Windows).
+
+## Piezas de Frozzy
+Frozzy se anima como marioneta de recortes hecha con piezas del diseño original (src/fz_*.png). Para regenerarlas desde src/frozzy.png: compilar y ejecutar 	ools/piezas.cs (instrucciones en el encabezado del archivo).
