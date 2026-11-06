@@ -32,7 +32,7 @@ namespace PausasFrozz
     static class AppInfo
     {
         // Para publicar una actualización: subir este número y hacer push a main.
-        public const string Version = "1.3.2";
+        public const string Version = "1.4.0";
         public const string Repo = "Frozz-Colombia/pausas-frozz";
     }
 
@@ -90,7 +90,7 @@ namespace PausasFrozz
             using (FileStream fs = File.OpenRead(tmp))
             using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
                 hash = BitConverter.ToString(sha.ComputeHash(fs)).Replace("-", "").ToLowerInvariant();
-            if (!string.IsNullOrEmpty(info.Sha256) && hash != info.Sha256)
+            if (string.IsNullOrEmpty(info.Sha256) || hash != info.Sha256)
             {
                 File.Delete(tmp);
                 throw new Exception("La descarga está incompleta o dañada (la huella no coincide).");
@@ -106,12 +106,28 @@ namespace PausasFrozz
             File.Move(exe, old);
             try { File.Move(newFile, exe); }
             catch { if (!File.Exists(exe)) File.Move(old, exe); throw; }
-            Process.Start(exe, "--updated");
+            Process.Start(exe, "--updated" + (Program.Portable ? " --portable" : ""));
+        }
+
+        // Si la versión nueva falla al arrancar, vuelve a la anterior
+        public static bool Rollback()
+        {
+            try
+            {
+                string exe = ExePath, old = exe + ".old", bad = exe + ".bad";
+                if (!File.Exists(old)) return false;
+                if (File.Exists(bad)) File.Delete(bad);
+                File.Move(exe, bad);
+                File.Move(old, exe);
+                Process.Start(exe, "--updated" + (Program.Portable ? " --portable" : ""));
+                return true;
+            }
+            catch { return false; }
         }
 
         public static void Cleanup()
         {
-            foreach (string s in new string[] { ".old", ".new" })
+            foreach (string s in new string[] { ".old", ".new", ".bad" })
                 try { if (File.Exists(ExePath + s)) File.Delete(ExePath + s); } catch { }
         }
     }
@@ -175,6 +191,8 @@ namespace PausasFrozz
             }
             catch { return false; }
         }
+
+        [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
 
         public static void RoundCorners(IntPtr h)
         {
@@ -485,8 +503,12 @@ namespace PausasFrozz
         public bool InSchedule(DateTime t)
         {
             if (!UseSchedule) return true;
-            if (!Days[(int)t.DayOfWeek]) return false;
-            return t.TimeOfDay >= Start && t.TimeOfDay < End;
+            TimeSpan tod = t.TimeOfDay;
+            bool hoy = Days[(int)t.DayOfWeek];
+            if (Start == End) return hoy;
+            if (Start < End) return hoy && tod >= Start && tod < End;
+            if (tod >= Start) return hoy;                               // turno nocturno
+            return tod < End && Days[(int)t.AddDays(-1).DayOfWeek];
         }
 
         public string ScheduleText()
@@ -562,7 +584,7 @@ namespace PausasFrozz
                 using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey, true))
                 {
                     if (k == null) return;
-                    if (on) k.SetValue(ValName, "\"" + exe + "\" --startup");
+                    if (on) k.SetValue(ValName, "\"" + exe + "\" --startup" + (Program.Portable ? " --portable" : ""));
                     else if (k.GetValue(ValName) != null) k.DeleteValue(ValName, false);
                 }
             }
@@ -1217,7 +1239,7 @@ namespace PausasFrozz
             PictureBox pb = new PictureBox();
             pb.Dock = DockStyle.Fill; pb.SizeMode = PictureBoxSizeMode.Zoom;
             Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("instructivo.jpg");
-            if (s != null) pb.Image = Image.FromStream(s);
+            if (s != null) { pb.Image = Image.FromStream(s); FormClosed += delegate { if (pb.Image != null) pb.Image.Dispose(); s.Dispose(); }; }
             Controls.Add(pb);
             Rectangle wa = Screen.PrimaryScreen.WorkingArea;
             int w = (int)(wa.Width * 0.8), h = (int)(w / 1.5);
@@ -1246,11 +1268,12 @@ namespace PausasFrozz
 
         FrozzyWindow frozzy;
         ReminderDef pending;
+        DateTime pendingSince;
         ToolStripMenuItem miFrozzy;
         string demoKey;
         Control invoker;
         System.Windows.Forms.Timer updTimer, updFirst;
-        bool checkingUpd;
+        bool checkingUpd, downloading;
         string declinedVersion;
         ToolStripMenuItem miStatus, miResume, miPauseMenu;
         List<ToolStripMenuItem> statusItems = new List<ToolStripMenuItem>();
@@ -1275,6 +1298,7 @@ namespace PausasFrozz
             if (!demo) Inicio.Apply(cfg.Startup);
 
             SystemEvents.SessionSwitch += OnSessionSwitch;
+            SystemEvents.DisplaySettingsChanged += OnDisplay;
             SystemEvents.PowerModeChanged += OnPower;
 
             timer = new System.Windows.Forms.Timer();
@@ -1282,6 +1306,9 @@ namespace PausasFrozz
             timer.Start();
 
             if (cfg.Mascot && (!demo || demoKey.StartsWith("frozzy") || demoKey.StartsWith("anim:") || demoKey.StartsWith("idle:") || demoKey == "molesto")) CreateFrozzy();
+            System.Windows.Forms.Timer clean = new System.Windows.Forms.Timer(); clean.Interval = 120000;
+            clean.Tick += delegate { clean.Stop(); Updater.Cleanup(); };
+            clean.Start();
             invoker = new Control();
             invoker.CreateControl();
             if (!demo)
@@ -1354,7 +1381,7 @@ namespace PausasFrozz
             miPauseMenu.DropDownItems.Add("30 minutos", null, delegate { PauseFor(TimeSpan.FromMinutes(30)); });
             miPauseMenu.DropDownItems.Add("1 hora", null, delegate { PauseFor(TimeSpan.FromHours(1)); });
             miPauseMenu.DropDownItems.Add("2 horas", null, delegate { PauseFor(TimeSpan.FromHours(2)); });
-            miPauseMenu.DropDownItems.Add("Hasta mañana", null, delegate { pausedUntil = DateTime.Today.AddDays(1); wasPaused = true; UpdateTooltip(DateTime.Now); });
+            miPauseMenu.DropDownItems.Add("Hasta mañana", null, delegate { PauseFor(DateTime.Today.AddDays(1) - DateTime.Now); });
             menu.Items.Add(miPauseMenu);
             miResume = new ToolStripMenuItem("Reanudar recordatorios", null, delegate { pausedUntil = DateTime.MinValue; });
             menu.Items.Add(miResume);
@@ -1411,6 +1438,12 @@ namespace PausasFrozz
 
         void Tick()
         {
+            try { TickCore(); }
+            catch (Exception ex) { Program.LogError(ex); }
+        }
+
+        void TickCore()
+        {
             DateTime now = DateTime.Now;
             bool sched = cfg.InSchedule(now);
             if (inSchedKnown && sched && !inSched) ResetAll(now);
@@ -1428,9 +1461,13 @@ namespace PausasFrozz
             if (++ticks % 5 == 1) UpdateTooltip(now);
             if (frozzy != null && ticks % 2 == 0) frozzy.SetBusyHidden(Native.UserBusy());
             if (frozzy != null) UpdateFrozzyNext(now, sched, paused);
+            if (frozzy != null) frozzy.SetAway(away);
             if (pending != null && (!sched || paused)) CancelPending();
 
             if (demo) return;
+            if (!demo && pending != null && popup == null && sched && !paused && !away && !Native.UserBusy()
+                && ((now - pendingSince).TotalMinutes >= 2 || frozzy == null || !frozzy.Visible))
+            { ShowReminder(pending); return; }
             if (!sched || paused || away || popup != null || pending != null || now < noPopupBefore) return;
             if (Native.UserBusy()) return;
 
@@ -1440,7 +1477,7 @@ namespace PausasFrozz
             if (next == null) return;
             if (frozzy != null && frozzy.Visible)
             {
-                pending = next;
+                pending = next; pendingSince = now;
                 frozzy.Alert(Frases.Personalizar(next.Call, Nombre), null);
                 if (cfg.Sound) Sonido.Chime();
                 if (cfg.Voice) Sonido.Say(Frases.Personalizar(next.Call, Nombre));
@@ -1552,7 +1589,17 @@ namespace PausasFrozz
             sb.Append("¿Abrir el historial?");
             if (MessageBox.Show(sb.ToString(), "Pausas Frozz — Resumen de hoy", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
             {
-                try { if (File.Exists(Historial.FilePath)) Process.Start(Historial.FilePath); else Process.Start(Config.Dir); } catch { }
+                try
+                {
+                    if (File.Exists(Historial.FilePath))
+                    {
+                        string copia = Path.Combine(Path.GetTempPath(), "historial_pausas_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
+                        File.Copy(Historial.FilePath, copia, true);
+                        Process.Start(copia);
+                    }
+                    else Process.Start(Config.Dir);
+                }
+                catch { }
             }
         }
 
@@ -1567,11 +1614,16 @@ namespace PausasFrozz
         {
             if (settings != null && !settings.IsDisposed) { settings.Activate(); return; }
             settings = new SettingsForm(cfg, defs, formIcon);
+            Dictionary<string, int> oldMin = new Dictionary<string, int>(cfg.Min);
+            Dictionary<string, bool> oldOn = new Dictionary<string, bool>(cfg.On);
             settings.FormClosed += delegate
             {
                 if (settings.DialogResult == DialogResult.OK)
                 {
-                    ResetAll(DateTime.Now);
+                    DateTime n0 = DateTime.Now;
+                    foreach (ReminderDef d in defs)
+                        if (oldMin[d.Key] != cfg.Min[d.Key] || oldOn[d.Key] != cfg.On[d.Key]) due[d.Key] = n0.AddMinutes(cfg.Min[d.Key]);
+                    if (pending != null && !cfg.On[pending.Key]) CancelPending();
                     if (!demo) Inicio.Apply(cfg.Startup);
                     ApplyFrozzy();
                     UpdateTooltip(DateTime.Now);
@@ -1588,14 +1640,27 @@ namespace PausasFrozz
             frozzy = new FrozzyWindow();
             frozzy.HoverText = FrozzyText;
             frozzy.Clicked += delegate { OnFrozzyClick(); };
-            frozzy.RightClicked += delegate { menu.Show(Cursor.Position); };
+            frozzy.RightClicked += delegate { menu.Show(Cursor.Position); Native.SetForegroundWindow(menu.Handle); };
             frozzy.Moved += delegate { cfg.MascotX = frozzy.Left; cfg.MascotY = frozzy.Top; cfg.Save(); };
             Point loc = cfg.MascotX != int.MinValue ? new Point(cfg.MascotX, cfg.MascotY) : FrozzyWindow.DefaultLocation();
             Rectangle r = new Rectangle(loc, frozzy.Size);
             r.Inflate(-r.Width / 3, -r.Height / 3);
-            if (!SystemInformation.VirtualScreen.Contains(r)) loc = FrozzyWindow.DefaultLocation();
+            if (!EnPantalla(r)) loc = FrozzyWindow.DefaultLocation();
             frozzy.Location = loc;
             frozzy.Show();
+        }
+
+        static bool EnPantalla(Rectangle r)
+        {
+            foreach (Screen s in Screen.AllScreens) if (s.WorkingArea.Contains(r)) return true;
+            return false;
+        }
+
+        void OnDisplay(object s, EventArgs e)
+        {
+            if (frozzy == null) return;
+            Rectangle r = frozzy.Bounds; r.Inflate(-r.Width / 3, -r.Height / 3);
+            if (!EnPantalla(r)) { frozzy.Location = FrozzyWindow.DefaultLocation(); cfg.MascotX = int.MinValue; cfg.MascotY = int.MinValue; cfg.Save(); }
         }
 
         void ApplyFrozzy()
@@ -1690,13 +1755,14 @@ namespace PausasFrozz
 
         void CheckUpdates(bool manual)
         {
-            if (checkingUpd) return;
+            if (checkingUpd || downloading) return;
+            if (!manual && (away || !cfg.InSchedule(DateTime.Now))) return;
             checkingUpd = true;
             ThreadPool.QueueUserWorkItem(delegate
             {
                 Updater.Info info = null; Exception err = null;
                 try { info = Updater.Check(); } catch (Exception ex) { err = ex; }
-                OnUi(delegate { checkingUpd = false; OnCheckResult(info, err, manual); });
+                OnUi(delegate { try { OnCheckResult(info, err, manual); } finally { checkingUpd = false; } });
             });
         }
 
@@ -1718,7 +1784,7 @@ namespace PausasFrozz
             if (!string.IsNullOrEmpty(info.Notes)) msg += "\n\nNovedades: " + info.Notes;
             msg += "\n\n¿Actualizar ahora? Toma unos segundos.";
             if (Ask(msg, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) { declinedVersion = v; return; }
-            checkingUpd = true;
+            downloading = true;
             tray.ShowBalloonTip(4000, "Pausas Frozz", "Descargando la versión " + v + "…", ToolTipIcon.Info);
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -1726,7 +1792,7 @@ namespace PausasFrozz
                 try { file = Updater.Download(info); } catch (Exception ex) { e2 = ex; }
                 OnUi(delegate
                 {
-                    checkingUpd = false;
+                    downloading = false;
                     if (e2 != null) { Ask("No se pudo descargar la actualización.\n\n" + e2.Message, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
                     try { Updater.Apply(file); }
                     catch (Exception ex)
@@ -1745,6 +1811,7 @@ namespace PausasFrozz
             if (updTimer != null) updTimer.Stop();
             if (frozzy != null) { frozzy.Close(); frozzy = null; }
             SystemEvents.SessionSwitch -= OnSessionSwitch;
+            SystemEvents.DisplaySettingsChanged -= OnDisplay;
             SystemEvents.PowerModeChanged -= OnPower;
             tray.Visible = false;
             tray.Dispose();
@@ -1754,10 +1821,28 @@ namespace PausasFrozz
 
     static class Program
     {
+        public static bool Portable;
+
+        public static void LogError(Exception ex)
+        {
+            if (ex == null) return;
+            try
+            {
+                Directory.CreateDirectory(Config.Dir);
+                File.AppendAllText(Path.Combine(Config.Dir, "errores.log"),
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " v" + AppInfo.Version + "  " + ex + Environment.NewLine + Environment.NewLine);
+            }
+            catch { }
+        }
+
         [STAThread]
         static void Main(string[] args)
         {
             if (args.Length == 2 && args[0] == "--export-icon") { Icons.WriteIco(args[1]); return; }
+            Portable = args.Contains("--portable");
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e) { LogError(e.Exception); };
+            AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e) { LogError(e.ExceptionObject as Exception); };
             try { Native.SetProcessDPIAware(); } catch { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -1779,20 +1864,29 @@ namespace PausasFrozz
             using (Mutex m = new Mutex(false, demo != null ? "Local\\PausasFrozz_SST_demo" : "Local\\PausasFrozz_SST"))
             {
                 bool got;
-                try { got = m.WaitOne(updated ? 30000 : 0); } catch (AbandonedMutexException) { got = true; }
+                try { got = m.WaitOne(updated ? 120000 : 0); } catch (AbandonedMutexException) { got = true; }
                 if (!got)
                 {
+                    if (updated) return;
                     MessageBox.Show("Pausas Frozz ya está en ejecución.\nBúscalo en la bandeja del sistema, junto al reloj.",
                         "Pausas Frozz", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
+                bool rolledBack = false;
                 try
                 {
-                    Updater.Cleanup();
                     using (Graphics g = Graphics.FromHwnd(IntPtr.Zero)) Brand.Scale = g.DpiX / 96f;
                     Application.Run(new TrayApp(args.Contains("--startup"), demo, updated));
                 }
+                catch (Exception ex)
+                {
+                    LogError(ex);
+                    if (updated) rolledBack = true;
+                    else MessageBox.Show("Pausas Frozz tuvo un error y se cerró.\nEl detalle quedó en:\n" + Path.Combine(Config.Dir, "errores.log"),
+                        "Pausas Frozz", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
                 finally { m.ReleaseMutex(); }
+                if (rolledBack) Updater.Rollback();
             }
         }
     }
