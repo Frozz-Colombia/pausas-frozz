@@ -625,6 +625,12 @@ namespace PausasFrozz
         void DrawPuppet(Graphics g, Pose p, float crouch)
         {
             // piernas (quedan detrás del torso)
+            // máscaras de cadera (detrás): rellenan el hueco cuando la pierna gira o se acorta
+            using (SolidBrush jb = new SolidBrush(Color.FromArgb(23, 97, 173)))
+            {
+                g.FillEllipse(jb, LegLX - 32, LegY - 26 + p.BodyDY, 64, 52);
+                g.FillEllipse(jb, LegRX - 32, LegY - 26 + p.BodyDY, 64, 52);
+            }
             DrawLeg(g, pzPiernaI, LegLX, p.BodyDY, p.LegLDY, p.LegLA);
             DrawLeg(g, pzPiernaD, LegRX, p.BodyDY, p.LegRDY, p.LegRA);
 
@@ -634,6 +640,9 @@ namespace PausasFrozz
             RotateAt(g, p.Lean, HipPivX, HipPivY);
 
             bool thumb = p.Thumb > 0.5f;
+            // máscaras de hombro (detrás de torso y brazos): mantienen el hombro redondo en cualquier ángulo
+            DrawShoulderBall(g, false, p.ShDY);
+            if (!thumb) DrawShoulderBall(g, true, p.ShDY);
             if (p.RFront < 0.5f) DrawArm(g, false, p.RA, p.RP, p.ShDY, rProp);
             if (p.LFront < 0.5f && !thumb) DrawArm(g, true, p.LA, p.LP, p.ShDY, lProp);
 
@@ -664,12 +673,31 @@ namespace PausasFrozz
             g.Restore(s);
         }
 
+        const float ShoulderR = 35, ElbowR = 26;
+        static readonly Color ShirtW = Color.FromArgb(253, 253, 253);
+
+        static void Ball(Graphics g, float cx, float cy, float r, Color fill)
+        {
+            using (SolidBrush b = new SolidBrush(fill)) g.FillEllipse(b, cx - r, cy - r, r * 2, r * 2);
+            using (Pen pn = new Pen(Ink, 5f)) g.DrawEllipse(pn, cx - r, cy - r, r * 2, r * 2);
+        }
+
+        void DrawShoulderBall(Graphics g, bool left, float shDY)
+        {
+            GraphicsState s = g.Save();
+            if (left) { g.TranslateTransform(MirrorX, 0); g.ScaleTransform(-1, 1); }
+            Ball(g, ShX, ShY - shDY, ShoulderR, ShirtW);
+            g.Restore(s);
+        }
+
         void DrawArm(Graphics g, bool left, float a, float pa, float shDY, string prop)
         {
             GraphicsState s = g.Save();
             if (left) { g.TranslateTransform(MirrorX, 0); g.ScaleTransform(-1, 1); }
             g.TranslateTransform(0, -shDY);
             RotateAt(g, a, ShX, ShY);
+            // máscara del codo (detrás de pata y puño): rellena el hueco al doblar
+            Ball(g, ElX, ElY + 4, ElbowR, Color.White);
             GraphicsState ps = g.Save();
             RotateAt(g, pa, ElX, ElY);
             Piece(g, pzPata);

@@ -32,7 +32,7 @@ namespace PausasFrozz
     static class AppInfo
     {
         // Para publicar una actualización: subir este número y hacer push a main.
-        public const string Version = "1.4.0";
+        public const string Version = "1.4.1";
         public const string Repo = "Frozz-Colombia/pausas-frozz";
     }
 
