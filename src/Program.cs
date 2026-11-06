@@ -22,6 +22,7 @@ using Microsoft.Win32;
 [assembly: AssemblyTitle("Pausas Frozz")]
 [assembly: AssemblyDescription("Recordatorios de pausas activas, descanso visual e hidratación - SST Frozz Colombia")]
 [assembly: AssemblyCompany("Frozz Colombia")]
+[assembly: AssemblyCopyright("Frozz Colombia - SST")]
 [assembly: AssemblyProduct("Pausas Frozz")]
 [assembly: AssemblyVersion(PausasFrozz.AppInfo.Version)]
 [assembly: AssemblyFileVersion(PausasFrozz.AppInfo.Version)]
@@ -461,14 +462,15 @@ namespace PausasFrozz
     {
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         const string ValName = "PausasFrozz";
-        public static void Apply(bool on)
+        public static void Apply(bool on) { ApplyPath(on, Application.ExecutablePath); }
+        public static void ApplyPath(bool on, string exe)
         {
             try
             {
                 using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RunKey, true))
                 {
                     if (k == null) return;
-                    if (on) k.SetValue(ValName, "\"" + Application.ExecutablePath + "\" --startup");
+                    if (on) k.SetValue(ValName, "\"" + exe + "\" --startup");
                     else if (k.GetValue(ValName) != null) k.DeleteValue(ValName, false);
                 }
             }
@@ -1571,6 +1573,16 @@ namespace PausasFrozz
 
             string demo = null;
             for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--demo") demo = args[i + 1];
+
+            using (Graphics g0 = Graphics.FromHwnd(IntPtr.Zero)) Brand.Scale = g0.DpiX / 96f;
+            if (args.Contains("--uninstall")) { Instalacion.Uninstall(); return; }
+            // Abierto desde Descargas u otra carpeta: funciona como instalador
+            if (demo == null && !args.Contains("--portable") && !Instalacion.RunningInstalled)
+            {
+                Application.Run(new InstallerForm(Icons.AppIcon(32)));
+                return;
+            }
+            if (Instalacion.RunningInstalled) Instalacion.Register();
 
             bool updated = args.Contains("--updated");
             using (Mutex m = new Mutex(false, demo != null ? "Local\\PausasFrozz_SST_demo" : "Local\\PausasFrozz_SST"))

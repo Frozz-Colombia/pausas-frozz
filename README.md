@@ -11,10 +11,17 @@ Recordatorios en segundo plano basados en el instructivo SST **«Ergonomía en p
 | Revisión de postura | 120 min | Lista de verificación del instructivo |
 
 ## Instalar (cada usuario)
-Descargar **[Instalar.cmd](https://github.com/smedina-cpu/pausas-frozz/releases/latest/download/Instalar.cmd)** y darle doble clic.
-Descarga la última versión, la deja en `%LOCALAPPDATA%\PausasFrozz`, la ejecuta y queda iniciando con Windows.
-No requiere permisos de administrador ni cuenta de GitHub.
+Descargar **[PausasFrozz-Instalador.exe](https://github.com/smedina-cpu/pausas-frozz/releases/latest/download/PausasFrozz-Instalador.exe)**, abrirlo y dar clic en **Instalar**.
 
+- Se instala solo para el usuario, sin permisos de administrador, en `%LOCALAPPDATA%\PausasFrozz`.
+- Crea el acceso directo en el menú Inicio, arranca con Windows y aparece en *Configuración › Aplicaciones* (desde ahí se desinstala).
+- Después de instalar, el archivo descargado se puede borrar.
+- Alternativa: [Instalar.cmd](https://github.com/smedina-cpu/pausas-frozz/releases/latest/download/Instalar.cmd) descarga e instala la última versión.
+
+> Como el .exe no tiene firma digital, Windows puede mostrar *«Windows protegió su PC»* la primera vez: clic en **Más información → Ejecutar de todas formas**.
+
+## Frozzy
+La mascota de Frozz vive en la esquina inferior derecha trabajando en su escritorio. Cuando toca una pausa se pone de pie, salta y avisa hasta que le das clic; abre el aviso a su lado, te acompaña y al terminar celebra con «¡Firme!». Se puede arrastrar a otra parte; clic derecho = menú. Se oculta en presentaciones y pantalla completa.
 ## Actualizaciones automáticas
 La app revisa el último Release de este repositorio al arrancar (a los 45 s) y cada 6 horas.
 Si hay una versión nueva pregunta *«¿Actualizar ahora?»*; al aceptar la descarga, verifica su huella SHA-256,
@@ -29,7 +36,7 @@ se reemplaza y se reinicia sola. También: clic derecho → *Buscar actualizacio
 Si se hace push sin cambiar la versión, no se publica nada.
 
 ## Uso
-- Ícono junto al reloj → **clic derecho**: próximos avisos, *Hacer ahora*, *Pausar* (30 min / 1 h / 2 h / hasta mañana), *Resumen de hoy*, *Ver instructivo*, *Configuración*, *Buscar actualizaciones*, *Salir*.
+- Ícono junto al reloj → **clic derecho**: próximos avisos, *Hacer ahora*, *Pausar* (30 min / 1 h / 2 h / hasta mañana), *Resumen de hoy*, *Ver instructivo*, *Mostrar a Frozzy*, *Configuración*, *Buscar actualizaciones*, *Salir*.
 - El aviso sale abajo a la derecha **sin quitar el foco** de lo que estás escribiendo. Botones: *Empezar / Listo*, *En 5 min*, *Omitir*.
 - Solo avisa en horario laboral (por defecto L–V 07:00–17:30, configurable).
 - Si no usas el equipo por 5 min o bloqueas la sesión, cuenta como pausa y reinicia los contadores.
@@ -40,7 +47,7 @@ Si se hace push sin cambiar la versión, no se publica nada.
 - Historial (para SST): `%APPDATA%\PausasFrozz\historial.csv` → `fecha,hora,recordatorio,accion` (hecho / omitido / pospuesto)
 
 ## Desinstalar
-Clic derecho → Configuración → desmarcar «Iniciar con Windows» → Guardar → Salir. Borrar la carpeta `%LOCALAPPDATA%\PausasFrozz`.
+*Configuración de Windows › Aplicaciones › Aplicaciones instaladas › Pausas Frozz › Desinstalar*. El historial se conserva en %APPDATA%\PausasFrozz.
 
 ## Compilar localmente
 `powershell -ExecutionPolicy Bypass -File build.ps1` (usa el compilador C# incluido en Windows).
