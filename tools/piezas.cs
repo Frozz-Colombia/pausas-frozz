@@ -101,7 +101,21 @@ static class Piezas
         Save(t, dir, "p_torso.png");
 
         // ---- manga derecha (hombro a puño) y pata derecha
-        Save(Cut(P(189, 217, 200, 215, 235, 195, 264, 188, 264, 350, 205, 350, 211, 320, 204, 290, 197, 260, 189, 232)), dir, "p_manga.png");
+        // La manga termina redondeada en la articulación del hombro (210,250): lo que queda
+        // "detrás" de la articulación lo dibuja la máscara del hombro en el programa.
+        Bitmap manga = Cut(P(189, 217, 200, 215, 235, 195, 264, 188, 264, 350, 205, 350, 211, 320, 204, 290, 197, 260, 189, 232));
+        {
+            float px = 210, py = 250, dx = 23, dy = 88, len = (float)Math.Sqrt(dx * dx + dy * dy), R = 34;
+            dx /= len; dy /= len;
+            for (int y = 0; y < manga.Height; y++)
+                for (int x = 0; x < manga.Width; x++)
+                {
+                    float vx = x - px, vy = y - py;
+                    float dot = vx * dx + vy * dy;
+                    if (dot < 0 && vx * vx + vy * vy > R * R && manga.GetPixel(x, y).A > 0) manga.SetPixel(x, y, Color.Transparent);
+                }
+        }
+        Save(manga, dir, "p_manga.png");
         Save(Cut(P(203, 338, 262, 336, 262, 400, 250, 412, 225, 414, 213, 401, 207, 376, 202, 350)), dir, "p_pata.png");
 
         // ---- brazo original con el pulgar arriba (pose de celebración)
