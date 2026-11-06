@@ -32,7 +32,7 @@ namespace PausasFrozz
     static class AppInfo
     {
         // Para publicar una actualización: subir este número y hacer push a main.
-        public const string Version = "1.3.1";
+        public const string Version = "1.3.2";
         public const string Repo = "Frozz-Colombia/pausas-frozz";
     }
 
@@ -1281,7 +1281,7 @@ namespace PausasFrozz
             timer.Interval = 1000; timer.Tick += delegate { Tick(); };
             timer.Start();
 
-            if (cfg.Mascot && (!demo || demoKey.StartsWith("frozzy") || demoKey.StartsWith("anim:") || demoKey.StartsWith("idle:"))) CreateFrozzy();
+            if (cfg.Mascot && (!demo || demoKey.StartsWith("frozzy") || demoKey.StartsWith("anim:") || demoKey.StartsWith("idle:") || demoKey == "molesto")) CreateFrozzy();
             invoker = new Control();
             invoker.CreateControl();
             if (!demo)
@@ -1318,6 +1318,7 @@ namespace PausasFrozz
                 else if (demoKey == "bienvenida") ShowWelcome();
                 else if (demoKey.StartsWith("anim:") && frozzy != null) { string an = demoKey.Substring(5); frozzy.SetAction(an); }
                 else if (demoKey.StartsWith("idle:") && frozzy != null) { string an = demoKey.Substring(5); frozzy.ForceIdle(an, 60); }
+                else if (demoKey == "molesto" && frozzy != null) frozzy.Annoy();
                 else if (demoKey == "frozzy" && frozzy != null)
                 {
                     System.Windows.Forms.Timer dt = new System.Windows.Forms.Timer(); dt.Interval = 2500;
