@@ -52,6 +52,11 @@ jobs:
           $ver = '${{ steps.v.outputs.version }}'
           $hash = (Get-FileHash PausasFrozz.exe -Algorithm SHA256).Hash.ToLower()
           $notas = (git log -1 --pretty=%s).Trim()
+          if ($notas -like 'Merge pull request*') {
+            # en una fusión se usa el título del PR (cuerpo del commit de merge)
+            $pr = (git log -1 --pretty=%b) -split "`n" | Where-Object { $_.Trim() } | Select-Object -First 1
+            if ($pr) { $notas = $pr.Trim() }
+          }
           "version=$ver`nsha256=$hash`nnotas=$notas`n" | Set-Content version.txt -NoNewline -Encoding utf8NoBOM
           Copy-Item PausasFrozz.exe PausasFrozz-Instalador.exe
           gh release create "v$ver" PausasFrozz-Instalador.exe PausasFrozz.exe version.txt Instalar.cmd `
