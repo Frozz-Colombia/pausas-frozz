@@ -1,0 +1,6 @@
+# Binarios: los genera GitHub Actions y se publican en Releases
+*.exe
+*.exe.new
+*.exe.old
+*.zip
+version.txt

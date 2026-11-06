@@ -1,0 +1,58 @@
+# Compila PausasFrozz.exe y publica un Release cada vez que cambia AppInfo.Version
+# en src/Program.cs. Las apps instaladas leen el último Release y ofrecen actualizarse.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'build.ps1', 'Instalar.cmd', 'README.md', '.github/workflows/release.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Leer versión
+        id: v
+        shell: pwsh
+        run: |
+          $m = Select-String -Path src/Program.cs -Pattern 'public const string Version = "([0-9.]+)"'
+          if (-not $m) { throw 'No se encontró AppInfo.Version en src/Program.cs' }
+          $ver = $m.Matches[0].Groups[1].Value
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          Write-Host "Versión: $ver"
+
+      - name: ¿Ya existe ese Release?
+        id: chk
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v${{ steps.v.outputs.version }}" *> $null
+          if ($LASTEXITCODE -eq 0) { "exists=true" >> $env:GITHUB_OUTPUT; Write-Host 'Ya publicado: no se hace nada (sube la versión para publicar).' }
+          else { "exists=false" >> $env:GITHUB_OUTPUT }
+          exit 0
+
+      - name: Compilar
+        if: steps.chk.outputs.exists == 'false'
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Publicar Release
+        if: steps.chk.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = '${{ steps.v.outputs.version }}'
+          $hash = (Get-FileHash PausasFrozz.exe -Algorithm SHA256).Hash.ToLower()
+          $notas = (git log -1 --pretty=%s).Trim()
+          "version=$ver`nsha256=$hash`nnotas=$notas`n" | Set-Content version.txt -NoNewline -Encoding utf8NoBOM
+          Compress-Archive -Path PausasFrozz.exe, Instalar.cmd, README.md -DestinationPath PausasFrozz_instalador.zip -Force
+          gh release create "v$ver" PausasFrozz.exe version.txt PausasFrozz_instalador.zip Instalar.cmd `
+            --title "Pausas Frozz $ver" --notes "$notas" --latest
