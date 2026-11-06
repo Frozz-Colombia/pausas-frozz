@@ -53,6 +53,6 @@ jobs:
           $hash = (Get-FileHash PausasFrozz.exe -Algorithm SHA256).Hash.ToLower()
           $notas = (git log -1 --pretty=%s).Trim()
           "version=$ver`nsha256=$hash`nnotas=$notas`n" | Set-Content version.txt -NoNewline -Encoding utf8NoBOM
-          Compress-Archive -Path PausasFrozz.exe, Instalar.cmd, README.md -DestinationPath PausasFrozz_instalador.zip -Force
-          gh release create "v$ver" PausasFrozz.exe version.txt PausasFrozz_instalador.zip Instalar.cmd `
+          Copy-Item PausasFrozz.exe PausasFrozz-Instalador.exe
+          gh release create "v$ver" PausasFrozz-Instalador.exe PausasFrozz.exe version.txt Instalar.cmd `
             --title "Pausas Frozz $ver" --notes "$notas" --latest
