@@ -35,7 +35,9 @@ La app revisa el último Release de este repositorio al arrancar (a los 45 s) y 
 Si hay una versión nueva pregunta *«¿Actualizar ahora?»*; al aceptar la descarga, verifica su huella SHA-256,
 se reemplaza y se reinicia sola. También: clic derecho → *Buscar actualizaciones*.
 
-### Publicar una actualización (solo el dueño del repo)
+### Publicar una actualización
+> Guía completa para desarrolladores (compilar, probar, publicar, reglas del código): **[DESARROLLO.md](DESARROLLO.md)**.
+
 1. Hacer los cambios en `src/Program.cs`.
 2. Subir el número en `AppInfo.Version` (p. ej. `1.1.0` → `1.2.0`).
 3. `git commit` + `git push` a `main`. El mensaje del commit aparece como «Novedades» en el aviso.
