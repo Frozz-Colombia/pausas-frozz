@@ -8,7 +8,7 @@ Recordatorios en segundo plano basados en el instructivo SST **«Ergonomía en p
 | Hidratación | 60 min | Tomar un vaso de agua |
 | Estiramientos cuello, hombros, espalda y muñecas | 60 min | Rutina guiada de 9 pasos (~2 min) |
 | Pausa activa | 90 min | Levantarse y moverse, 6 pasos (~3 min) |
-| Revisión de postura | 120 min | Lista de verificación del instructivo |
+| Revisión de postura | 30 min | Lista de verificación del instructivo |
 
 ## Instalar (cada usuario)
 Descargar **[PausasFrozz-Instalador.exe](https://github.com/Frozz-Colombia/pausas-frozz/releases/latest/download/PausasFrozz-Instalador.exe)**, abrirlo y dar clic en **Instalar**.

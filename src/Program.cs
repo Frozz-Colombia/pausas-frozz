@@ -373,7 +373,7 @@ namespace PausasFrozz
 
             d = new ReminderDef();
             d.Key = "postura"; d.Call = "¡Revisemos tu postura{n}!"; d.Name = "Revisión de postura"; d.Short = "Postura"; d.Plural = "Revisiones de postura";
-            d.Glyph = "posture"; d.DefaultMinutes = 120; d.ResetOnAway = false; d.Checklist = true;
+            d.Glyph = "posture"; d.DefaultMinutes = 30; d.ResetOnAway = false; d.Checklist = true;
             d.Title = "Revisa tu postura";
             d.Intro = "Un puesto bien ajustado también es una medida de prevención. Verifica:";
             d.Steps.Add(new Step("Espalda recta y bien apoyada en el espaldar.", 0));
@@ -403,6 +403,9 @@ namespace PausasFrozz
         public bool[] Days = { false, true, true, true, true, true, true }; // índice = DayOfWeek (0 = domingo)
         public const int ScheduleCurrent = 2;   // versión del horario por defecto (para migrar una vez)
         public int ScheduleVer = ScheduleCurrent;
+        // Intervalos recomendados por SST: vista 20, agua 60, estiramientos 60, pausa activa 90, postura 30
+        public const int IntervalsCurrent = 2;
+        public int IntervalsVer = IntervalsCurrent;
         public int IdleMinutes = 5;
         public int SnoozeMinutes = 5;
         public bool Sound = true;
@@ -432,7 +435,7 @@ namespace PausasFrozz
             try
             {
                 if (!File.Exists(FilePath)) return c;
-                c.ScheduleVer = 0;
+                c.ScheduleVer = 0; c.IntervalsVer = 0;
                 foreach (string raw in File.ReadAllLines(FilePath, Encoding.UTF8))
                 {
                     int i = raw.IndexOf('=');
@@ -447,6 +450,7 @@ namespace PausasFrozz
                     else if (k == "sabado.inicio") c.SatStart = ParseHM(v, c.SatStart);
                     else if (k == "sabado.fin") c.SatEnd = ParseHM(v, c.SatEnd);
                     else if (k == "horario_v" && int.TryParse(v, out n)) c.ScheduleVer = n;
+                    else if (k == "intervalos_v" && int.TryParse(v, out n)) c.IntervalsVer = n;
                     else if (k == "dias")
                     {
                         for (int j = 0; j < 7; j++) c.Days[j] = false;
@@ -468,6 +472,13 @@ namespace PausasFrozz
                 }
             }
             catch { }
+            // Instalaciones anteriores: se aplican una vez los intervalos recomendados por SST
+            if (c.IntervalsVer < IntervalsCurrent)
+            {
+                foreach (ReminderDef d in defs) c.Min[d.Key] = d.DefaultMinutes;
+                c.IntervalsVer = IntervalsCurrent;
+                if (c.ScheduleVer >= ScheduleCurrent) c.Save();
+            }
             // Instalaciones anteriores: se aplica una vez el horario laboral real de Frozz
             if (c.ScheduleVer < ScheduleCurrent)
             {
@@ -501,6 +512,7 @@ namespace PausasFrozz
                 sb.AppendLine("sabado.inicio=" + SatStart.ToString(@"hh\:mm"));
                 sb.AppendLine("sabado.fin=" + SatEnd.ToString(@"hh\:mm"));
                 sb.AppendLine("horario_v=" + ScheduleVer);
+                sb.AppendLine("intervalos_v=" + IntervalsVer);
                 List<string> ds = new List<string>();
                 for (int j = 0; j < 7; j++) if (Days[j]) ds.Add(j.ToString());
                 sb.AppendLine("dias=" + string.Join(",", ds));
