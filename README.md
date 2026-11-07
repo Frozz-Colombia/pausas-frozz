@@ -8,7 +8,7 @@ Recordatorios en segundo plano basados en el instructivo SST **«Ergonomía en p
 | Hidratación | 60 min | Tomar un vaso de agua |
 | Estiramientos cuello, hombros, espalda y muñecas | 60 min | Rutina guiada de 9 pasos (~2 min) |
 | Pausa activa | 90 min | Levantarse y moverse, 6 pasos (~3 min) |
-| Revisión de postura | 120 min | Lista de verificación del instructivo |
+| Revisión de postura | 30 min | Lista de verificación del instructivo |
 
 ## Instalar (cada usuario)
 Descargar **[PausasFrozz-Instalador.exe](https://github.com/Frozz-Colombia/pausas-frozz/releases/latest/download/PausasFrozz-Instalador.exe)**, abrirlo y dar clic en **Instalar**.
@@ -46,7 +46,8 @@ Si se hace push sin cambiar la versión, no se publica nada.
 ## Uso
 - Ícono junto al reloj → **clic derecho**: próximos avisos, *Hacer ahora*, *Pausar* (30 min / 1 h / 2 h / hasta mañana), *Resumen de hoy*, *Ver instructivo*, *Mostrar a Frozzy*, *Configuración*, *Buscar actualizaciones*, *Salir*.
 - El aviso sale abajo a la derecha **sin quitar el foco** de lo que estás escribiendo. Botones: *Empezar / Listo*, *En 5 min*, *Omitir*.
-- Solo avisa en horario laboral (por defecto L–V 07:00–17:30, configurable).
+- Solo avisa en horario laboral (por defecto el de Frozz: L–V 08:00–16:30 y sábado 08:00–12:30, configurable).
+- Cuando hay una versión nueva, Frozzy lo anuncia con un globo; al darle clic muestra las novedades y ofrece actualizar.
 - Si no usas el equipo por 5 min o bloqueas la sesión, cuenta como pausa y reinicia los contadores.
 - No interrumpe presentaciones ni aplicaciones a pantalla completa.
 

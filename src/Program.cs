@@ -32,7 +32,7 @@ namespace PausasFrozz
     static class AppInfo
     {
         // Para publicar una actualización: subir este número y hacer push a main.
-        public const string Version = "1.4.1";
+        public const string Version = "1.5.0";
         public const string Repo = "Frozz-Colombia/pausas-frozz";
     }
 
@@ -373,7 +373,7 @@ namespace PausasFrozz
 
             d = new ReminderDef();
             d.Key = "postura"; d.Call = "¡Revisemos tu postura{n}!"; d.Name = "Revisión de postura"; d.Short = "Postura"; d.Plural = "Revisiones de postura";
-            d.Glyph = "posture"; d.DefaultMinutes = 120; d.ResetOnAway = false; d.Checklist = true;
+            d.Glyph = "posture"; d.DefaultMinutes = 30; d.ResetOnAway = false; d.Checklist = true;
             d.Title = "Revisa tu postura";
             d.Intro = "Un puesto bien ajustado también es una medida de prevención. Verifica:";
             d.Steps.Add(new Step("Espalda recta y bien apoyada en el espaldar.", 0));
@@ -395,9 +395,17 @@ namespace PausasFrozz
         public Dictionary<string, bool> On = new Dictionary<string, bool>();
         public Dictionary<string, int> Min = new Dictionary<string, int>();
         public bool UseSchedule = true;
-        public TimeSpan Start = new TimeSpan(7, 0, 0);
-        public TimeSpan End = new TimeSpan(17, 30, 0);
-        public bool[] Days = { false, true, true, true, true, true, false }; // índice = DayOfWeek (0 = domingo)
+        // Horario laboral de Frozz Colombia: L-V 08:00-16:30 y sábado 08:00-12:30
+        public TimeSpan Start = new TimeSpan(8, 0, 0);
+        public TimeSpan End = new TimeSpan(16, 30, 0);
+        public TimeSpan SatStart = new TimeSpan(8, 0, 0);
+        public TimeSpan SatEnd = new TimeSpan(12, 30, 0);
+        public bool[] Days = { false, true, true, true, true, true, true }; // índice = DayOfWeek (0 = domingo)
+        public const int ScheduleCurrent = 2;   // versión del horario por defecto (para migrar una vez)
+        public int ScheduleVer = ScheduleCurrent;
+        // Intervalos recomendados por SST: vista 20, agua 60, estiramientos 60, pausa activa 90, postura 30
+        public const int IntervalsCurrent = 2;
+        public int IntervalsVer = IntervalsCurrent;
         public int IdleMinutes = 5;
         public int SnoozeMinutes = 5;
         public bool Sound = true;
@@ -427,6 +435,7 @@ namespace PausasFrozz
             try
             {
                 if (!File.Exists(FilePath)) return c;
+                c.ScheduleVer = 0; c.IntervalsVer = 0;
                 foreach (string raw in File.ReadAllLines(FilePath, Encoding.UTF8))
                 {
                     int i = raw.IndexOf('=');
@@ -438,6 +447,10 @@ namespace PausasFrozz
                     else if (k == "horario") c.UseSchedule = v == "1";
                     else if (k == "inicio") c.Start = ParseHM(v, c.Start);
                     else if (k == "fin") c.End = ParseHM(v, c.End);
+                    else if (k == "sabado.inicio") c.SatStart = ParseHM(v, c.SatStart);
+                    else if (k == "sabado.fin") c.SatEnd = ParseHM(v, c.SatEnd);
+                    else if (k == "horario_v" && int.TryParse(v, out n)) c.ScheduleVer = n;
+                    else if (k == "intervalos_v" && int.TryParse(v, out n)) c.IntervalsVer = n;
                     else if (k == "dias")
                     {
                         for (int j = 0; j < 7; j++) c.Days[j] = false;
@@ -459,6 +472,22 @@ namespace PausasFrozz
                 }
             }
             catch { }
+            // Instalaciones anteriores: se aplican una vez los intervalos recomendados por SST
+            if (c.IntervalsVer < IntervalsCurrent)
+            {
+                foreach (ReminderDef d in defs) c.Min[d.Key] = d.DefaultMinutes;
+                c.IntervalsVer = IntervalsCurrent;
+                if (c.ScheduleVer >= ScheduleCurrent) c.Save();
+            }
+            // Instalaciones anteriores: se aplica una vez el horario laboral real de Frozz
+            if (c.ScheduleVer < ScheduleCurrent)
+            {
+                Config d = new Config();
+                c.UseSchedule = true; c.Start = d.Start; c.End = d.End; c.SatStart = d.SatStart; c.SatEnd = d.SatEnd;
+                c.Days = (bool[])d.Days.Clone();
+                c.ScheduleVer = ScheduleCurrent;
+                c.Save();
+            }
             return c;
         }
 
@@ -480,6 +509,10 @@ namespace PausasFrozz
                 sb.AppendLine("horario=" + (UseSchedule ? "1" : "0"));
                 sb.AppendLine("inicio=" + Start.ToString(@"hh\:mm"));
                 sb.AppendLine("fin=" + End.ToString(@"hh\:mm"));
+                sb.AppendLine("sabado.inicio=" + SatStart.ToString(@"hh\:mm"));
+                sb.AppendLine("sabado.fin=" + SatEnd.ToString(@"hh\:mm"));
+                sb.AppendLine("horario_v=" + ScheduleVer);
+                sb.AppendLine("intervalos_v=" + IntervalsVer);
                 List<string> ds = new List<string>();
                 for (int j = 0; j < 7; j++) if (Days[j]) ds.Add(j.ToString());
                 sb.AppendLine("dias=" + string.Join(",", ds));
@@ -500,15 +533,23 @@ namespace PausasFrozz
             catch { }
         }
 
+        void Range(DayOfWeek d, out TimeSpan s, out TimeSpan e)
+        {
+            if (d == DayOfWeek.Saturday) { s = SatStart; e = SatEnd; } else { s = Start; e = End; }
+        }
+
         public bool InSchedule(DateTime t)
         {
             if (!UseSchedule) return true;
-            TimeSpan tod = t.TimeOfDay;
+            TimeSpan tod = t.TimeOfDay, s, e;
+            Range(t.DayOfWeek, out s, out e);
             bool hoy = Days[(int)t.DayOfWeek];
-            if (Start == End) return hoy;
-            if (Start < End) return hoy && tod >= Start && tod < End;
-            if (tod >= Start) return hoy;                               // turno nocturno
-            return tod < End && Days[(int)t.AddDays(-1).DayOfWeek];
+            if (s == e) return hoy;
+            if (s < e) return hoy && tod >= s && tod < e;
+            if (tod >= s) return hoy;                                   // turno nocturno
+            DateTime ayer = t.AddDays(-1);
+            TimeSpan s2, e2; Range(ayer.DayOfWeek, out s2, out e2);
+            return s2 > e2 && tod < e2 && Days[(int)ayer.DayOfWeek];
         }
 
         public string ScheduleText()
@@ -516,8 +557,10 @@ namespace PausasFrozz
             string[] n = { "D", "L", "M", "X", "J", "V", "S" };
             int[] order = { 1, 2, 3, 4, 5, 6, 0 };
             List<string> ds = new List<string>();
-            foreach (int i in order) if (Days[i]) ds.Add(n[i]);
-            return string.Join(" ", ds) + "  " + Start.ToString(@"hh\:mm") + "–" + End.ToString(@"hh\:mm");
+            foreach (int i in order) if (Days[i] && i != 6) ds.Add(n[i]);
+            string txt = string.Join(" ", ds) + " " + Start.ToString(@"hh\:mm") + "–" + End.ToString(@"hh\:mm");
+            if (Days[6]) txt += " · S " + SatStart.ToString(@"hh\:mm") + "–" + SatEnd.ToString(@"hh\:mm");
+            return txt;
         }
     }
 
@@ -1047,7 +1090,7 @@ namespace PausasFrozz
         Dictionary<string, CheckBox> chk = new Dictionary<string, CheckBox>();
         Dictionary<string, NumericUpDown> num = new Dictionary<string, NumericUpDown>();
         CheckBox chkSched, chkSound, chkStartup, chkFrozzy, chkName, chkVoice; TextBox txtName; NumericUpDown numCooldown;
-        DateTimePicker dtStart, dtEnd;
+        DateTimePicker dtStart, dtEnd, dtSatStart, dtSatEnd;
         CheckBox[] days = new CheckBox[7];
         NumericUpDown numIdle, numSnooze;
 
@@ -1080,7 +1123,7 @@ namespace PausasFrozz
 
             Section("Horario de trabajo", fH, x, ref y);
             chkSched = new CheckBox();
-            chkSched.Text = "Recordar solo en este horario:"; chkSched.Checked = cfg.UseSchedule;
+            chkSched.Text = "Recordar solo en horario laboral:"; chkSched.Checked = cfg.UseSchedule;
             chkSched.Location = new Point(x, y); chkSched.Size = new Size(Brand.S(240), Brand.S(26));
             Controls.Add(chkSched);
             Lbl("de", x + Brand.S(246), y + Brand.S(3));
@@ -1097,6 +1140,13 @@ namespace PausasFrozz
                 cb.Location = new Point(x + Brand.S(20) + i * Brand.S(66), y); cb.Size = new Size(Brand.S(62), Brand.S(26));
                 Controls.Add(cb); days[map[i]] = cb;
             }
+            y += Brand.S(34);
+            Lbl("Los días marcados usan el horario de arriba; el sábado tiene el suyo:", x + Brand.S(20), y + Brand.S(3));
+            y += Brand.S(28);
+            Lbl("Sábado de", x + Brand.S(20), y + Brand.S(3));
+            dtSatStart = Time(cfg.SatStart, x + Brand.S(110), y);
+            Lbl("a", x + Brand.S(194), y + Brand.S(3));
+            dtSatEnd = Time(cfg.SatEnd, x + Brand.S(212), y);
             y += Brand.S(42);
 
             Section("General", fH, x, ref y);
@@ -1215,6 +1265,8 @@ namespace PausasFrozz
             cfg.UseSchedule = chkSched.Checked;
             cfg.Start = new TimeSpan(dtStart.Value.Hour, dtStart.Value.Minute, 0);
             cfg.End = new TimeSpan(dtEnd.Value.Hour, dtEnd.Value.Minute, 0);
+            cfg.SatStart = new TimeSpan(dtSatStart.Value.Hour, dtSatStart.Value.Minute, 0);
+            cfg.SatEnd = new TimeSpan(dtSatEnd.Value.Hour, dtSatEnd.Value.Minute, 0);
             for (int i = 0; i < 7; i++) cfg.Days[i] = days[i].Checked;
             cfg.IdleMinutes = (int)numIdle.Value;
             cfg.SnoozeMinutes = (int)numSnooze.Value;
@@ -1269,6 +1321,7 @@ namespace PausasFrozz
         FrozzyWindow frozzy;
         ReminderDef pending;
         DateTime pendingSince;
+        Updater.Info updateOffer;
         ToolStripMenuItem miFrozzy;
         string demoKey;
         Control invoker;
@@ -1305,7 +1358,7 @@ namespace PausasFrozz
             timer.Interval = 1000; timer.Tick += delegate { Tick(); };
             timer.Start();
 
-            if (cfg.Mascot && (!demo || demoKey.StartsWith("frozzy") || demoKey.StartsWith("anim:") || demoKey.StartsWith("idle:") || demoKey == "molesto")) CreateFrozzy();
+            if (cfg.Mascot && (!demo || demoKey.StartsWith("frozzy") || demoKey.StartsWith("anim:") || demoKey.StartsWith("idle:") || demoKey == "molesto" || demoKey == "actualizacion")) CreateFrozzy();
             System.Windows.Forms.Timer clean = new System.Windows.Forms.Timer(); clean.Interval = 120000;
             clean.Tick += delegate { clean.Stop(); Updater.Cleanup(); };
             clean.Start();
@@ -1346,6 +1399,7 @@ namespace PausasFrozz
                 else if (demoKey.StartsWith("anim:") && frozzy != null) { string an = demoKey.Substring(5); frozzy.SetAction(an); }
                 else if (demoKey.StartsWith("idle:") && frozzy != null) { string an = demoKey.Substring(5); frozzy.ForceIdle(an, 60); }
                 else if (demoKey == "molesto" && frozzy != null) frozzy.Annoy();
+                else if (demoKey == "actualizacion" && frozzy != null) frozzy.NotifyUpdate("9.9.9");
                 else if (demoKey == "frozzy" && frozzy != null)
                 {
                     System.Windows.Forms.Timer dt = new System.Windows.Forms.Timer(); dt.Interval = 2500;
@@ -1725,6 +1779,13 @@ namespace PausasFrozz
         void OnFrozzyClick()
         {
             if (pending != null) { ReminderDef d = pending; ShowReminder(d); }
+            else if (updateOffer != null && popup == null)
+            {
+                Updater.Info u = updateOffer;
+                updateOffer = null;
+                frozzy.ClearUpdate();
+                OnCheckResult(u, null, true);
+            }
             else if (popup == null) frozzy.Say("¡Todo firme!", FrozzyText(), 3.5, false);
         }
 
@@ -1780,6 +1841,17 @@ namespace PausasFrozz
             }
             string v = info.Version.ToString();
             if (!manual && v == declinedVersion) return;
+            if (!manual && frozzy != null && frozzy.Visible)
+            {
+                // Frozzy lo anuncia y espera a que le den clic
+                if (updateOffer == null || updateOffer.Version != info.Version)
+                {
+                    updateOffer = info;
+                    frozzy.NotifyUpdate(v);
+                    if (cfg.Sound) Sonido.Chime();
+                }
+                return;
+            }
             string msg = "Hay una nueva versión de Pausas Frozz: " + v + "\n(tienes la " + AppInfo.Version + ")";
             if (!string.IsNullOrEmpty(info.Notes)) msg += "\n\nNovedades: " + info.Notes;
             msg += "\n\n¿Actualizar ahora? Toma unos segundos.";
