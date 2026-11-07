@@ -258,6 +258,10 @@ namespace PausasFrozz
             phraseUntil = phraseFrom.AddSeconds(string.IsNullOrEmpty(motivational) ? 0 : Math.Min(9, 3.5 + motivational.Length * 0.06));
         }
 
+        string updateVer;
+        public void NotifyUpdate(string version) { updateVer = version; }
+        public void ClearUpdate() { updateVer = null; }
+
         public void ForceIdle(string a, double secs) { idleAction = a; idleUntil = DateTime.Now.AddSeconds(secs); nextIdle = idleUntil.AddSeconds(30); }
 
         public void Annoy() { annoyedUntil = DateTime.Now.AddSeconds(30); annoyedText = Molesto[rnd.Next(Molesto.Length)]; }
@@ -328,6 +332,7 @@ namespace PausasFrozz
             Pose p = new Pose();
             string a;
             if (st == St.Desk && DateTime.Now < annoyedUntil) a = "molesto";
+            else if (seated && st == St.Desk && updateVer != null && !hover && (t % 6) < 2.2) a = "saludar";
             else if (seated) a = hover && st == St.Desk ? "saludar" : idleAction;
             else if (st == St.Alert) a = "alerta";
             else if (st == St.Cheer) a = el < 2.2 ? "celebrar" : "pulgar";
@@ -574,6 +579,7 @@ namespace PausasFrozz
             else if (now < sayUntil) { l1 = sayL1; l2 = sayL2; big = sayBig; }
             else if (st == St.Cheer && phrase != null && now >= phraseFrom && now < phraseUntil) l1 = phrase;
             else if (st == St.Alert && callText != null) { l1 = callText; l2 = callSub ?? "Haz clic en mí"; }
+            else if (st == St.Desk && updateVer != null) { l1 = "¡Hay una versión nueva! (" + updateVer + ")"; l2 = "Haz clic en mí para actualizar"; }
             else if (st == St.Desk && hover && HoverText != null) { l1 = HoverText(); l2 = "Arrástrame para moverme"; }
             if (l1 != null)
             {
